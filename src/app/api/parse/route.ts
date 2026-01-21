@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ParsedTask, AIParseResponse, TaskGroup } from '@/types';
 
-const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
 const SYSTEM_PROMPT = `You are a productivity assistant that helps parse and organize daily tasks.
 
@@ -14,7 +14,7 @@ For each task, determine:
    - 5 = High impact, urgent, low effort
    - 1 = Low impact, not urgent, high effort
 4. estimatedMinutes: Realistic time estimate. Use only: 15, 30, 60, 90, or 120
-5. fixedTime: If a specific time is mentioned (e.g., "lunch at 12:30", "call at 3pm"), extract as "HH:MM" format. Otherwise null.
+5. fixedTime: If a specific time is mentioned (e.g., "lunch at 12:30", "call at 3pm"), extract as "HH:MM" format (24-hour). Otherwise null.
 
 Guidelines:
 - Prioritize deep work and high-impact tasks higher
@@ -22,7 +22,7 @@ Guidelines:
 - Be realistic with time estimates (most tasks take longer than people think)
 - Preserve any time constraints mentioned
 
-Respond ONLY with valid JSON in this exact format:
+Respond ONLY with valid JSON in this exact format (no markdown, no explanation):
 {
   "tasks": [
     {
@@ -47,35 +47,38 @@ export async function POST(request: NextRequest) {
     }
 
     // If no API key, use mock response for development
-    if (!ANTHROPIC_API_KEY) {
-      console.log('No ANTHROPIC_API_KEY found, using mock response');
+    if (!OPENAI_API_KEY) {
+      console.log('No OPENAI_API_KEY found, using mock response');
       const mockResponse = generateMockResponse(text);
       return NextResponse.json(mockResponse);
     }
 
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-api-key': ANTHROPIC_API_KEY,
-        'anthropic-version': '2023-06-01',
+        'Authorization': `Bearer ${OPENAI_API_KEY}`,
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 2048,
-        system: SYSTEM_PROMPT,
+        model: 'gpt-4o-mini',
         messages: [
+          {
+            role: 'system',
+            content: SYSTEM_PROMPT,
+          },
           {
             role: 'user',
             content: `Parse these tasks:\n\n${text}`,
           },
         ],
+        temperature: 0.3,
+        max_tokens: 2048,
       }),
     });
 
     if (!response.ok) {
       const error = await response.text();
-      console.error('Anthropic API error:', error);
+      console.error('OpenAI API error:', error);
       return NextResponse.json(
         { error: 'Failed to parse tasks' },
         { status: 500 }
@@ -83,7 +86,7 @@ export async function POST(request: NextRequest) {
     }
 
     const data = await response.json();
-    const content = data.content[0]?.text;
+    const content = data.choices?.[0]?.message?.content;
 
     if (!content) {
       return NextResponse.json(
@@ -92,8 +95,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Parse the JSON response
-    const parsed: AIParseResponse = JSON.parse(content);
+    // Parse the JSON response (handle potential markdown code blocks)
+    let jsonContent = content.trim();
+    if (jsonContent.startsWith('```')) {
+      jsonContent = jsonContent.replace(/```json?\n?/g, '').replace(/```$/g, '').trim();
+    }
+
+    const parsed: AIParseResponse = JSON.parse(jsonContent);
     return NextResponse.json(parsed);
 
   } catch (error) {
@@ -146,7 +154,7 @@ function generateMockResponse(text: string): AIParseResponse {
     tasks.push({
       title: cleaned.replace(/\s*(at|@)\s*\d{1,2}(:\d{2})?\s*(am|pm)?/i, '').trim(),
       group,
-      priority: Math.floor(Math.random() * 3) + 3, // 3-5 for mock
+      priority: Math.floor(Math.random() * 3) + 3,
       estimatedMinutes: durations[Math.floor(Math.random() * durations.length)],
       fixedTime,
     });
