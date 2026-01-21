@@ -110,7 +110,7 @@ function generateMockResponse(text: string): AIParseResponse {
   const lines = text.split('\n').filter(line => line.trim());
   const tasks: ParsedTask[] = [];
 
-  const groups = ['deep-work', 'admin', 'personal', 'meetings', 'health'] as const;
+  const groups = ['deep-work', 'admin', 'personal', 'meetings', 'health', 'other'] as const;
   const durations = [15, 30, 60, 90, 120] as const;
 
   for (const line of lines) {
