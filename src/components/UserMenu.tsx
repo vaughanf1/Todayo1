@@ -1,14 +1,34 @@
 'use client';
 
-import { useSession, signOut } from 'next-auth/react';
-import { useState, useRef, useEffect } from 'react';
+import { createClient } from '@/lib/supabase/client';
+import { useEffect, useState, useRef } from 'react';
 import { LogOut, User } from 'lucide-react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import type { User as SupabaseUser, AuthChangeEvent, Session } from '@supabase/supabase-js';
 
 export function UserMenu() {
-  const { data: session, status } = useSession();
+  const supabase = createClient();
+  const router = useRouter();
+  const [user, setUser] = useState<SupabaseUser | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
   const [isOpen, setIsOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const getUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      setUser(user);
+      setIsLoading(false);
+    };
+    getUser();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event: AuthChangeEvent, session: Session | null) => {
+      setUser(session?.user ?? null);
+    });
+
+    return () => subscription.unsubscribe();
+  }, [supabase]);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -20,13 +40,18 @@ export function UserMenu() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  if (status === 'loading') {
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    router.push('/auth/signin');
+  };
+
+  if (isLoading) {
     return (
       <div className="w-9 h-9 rounded-full bg-muted animate-pulse" />
     );
   }
 
-  if (!session) {
+  if (!user) {
     return (
       <Link
         href="/auth/signin"
@@ -37,16 +62,20 @@ export function UserMenu() {
     );
   }
 
+  const avatarUrl = user.user_metadata?.avatar_url;
+  const name = user.user_metadata?.full_name || user.email;
+  const email = user.email;
+
   return (
     <div className="relative" ref={menuRef}>
       <button
         onClick={() => setIsOpen(!isOpen)}
         className="flex items-center gap-2 p-1 rounded-full hover:bg-card/60 transition-colors"
       >
-        {session.user?.image ? (
+        {avatarUrl ? (
           <img
-            src={session.user.image}
-            alt={session.user.name || 'User'}
+            src={avatarUrl}
+            alt={name || 'User'}
             className="w-9 h-9 rounded-full border border-border/30"
           />
         ) : (
@@ -60,14 +89,14 @@ export function UserMenu() {
         <div className="absolute right-0 mt-2 w-56 glass rounded-xl overflow-hidden animate-slide-up z-50">
           <div className="p-4 border-b border-border/30">
             <p className="font-medium text-sm text-foreground truncate">
-              {session.user?.name}
+              {name}
             </p>
             <p className="text-xs text-muted-foreground truncate">
-              {session.user?.email}
+              {email}
             </p>
           </div>
           <button
-            onClick={() => signOut({ callbackUrl: '/auth/signin' })}
+            onClick={handleSignOut}
             className="w-full flex items-center gap-3 px-4 py-3 text-sm text-muted-foreground hover:text-foreground hover:bg-card/60 transition-colors"
           >
             <LogOut className="w-4 h-4" />
