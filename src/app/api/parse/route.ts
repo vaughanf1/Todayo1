@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { ParsedTask, AIParseResponse } from '@/types';
+import { ParsedTask, AIParseResponse, TaskGroup } from '@/types';
 
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 
@@ -110,7 +110,6 @@ function generateMockResponse(text: string): AIParseResponse {
   const lines = text.split('\n').filter(line => line.trim());
   const tasks: ParsedTask[] = [];
 
-  const groups = ['deep-work', 'admin', 'personal', 'meetings', 'health', 'other'] as const;
   const durations = [15, 30, 60, 90, 120] as const;
 
   for (const line of lines) {
@@ -130,7 +129,7 @@ function generateMockResponse(text: string): AIParseResponse {
     }
 
     // Simple heuristics for grouping
-    let group: typeof groups[number] = 'other';
+    let group: TaskGroup = 'other';
     const lower = cleaned.toLowerCase();
     if (lower.includes('email') || lower.includes('invoice') || lower.includes('call') || lower.includes('reply')) {
       group = 'admin';
