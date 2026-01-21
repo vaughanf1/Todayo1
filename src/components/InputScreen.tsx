@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { getGreeting } from '@/lib/utils';
+import { UserMenu } from './UserMenu';
 
 interface InputScreenProps {
   onSubmit: (text: string) => void;
@@ -25,7 +26,13 @@ export function InputScreen({ onSubmit, isLoading }: InputScreenProps) {
   };
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center px-6 py-12">
+    <div className="min-h-screen flex flex-col px-6 py-12">
+      {/* Header */}
+      <header className="flex justify-end mb-8">
+        <UserMenu />
+      </header>
+
+      <div className="flex-1 flex flex-col items-center justify-center">
       <div className="w-full max-w-md animate-fade-in">
         {/* Greeting */}
         <div className="text-center mb-12">
@@ -91,6 +98,7 @@ export function InputScreen({ onSubmit, isLoading }: InputScreenProps) {
         <p className="text-center text-sm text-muted-foreground/60 mt-6 font-light animate-fade-in" style={{ animationDelay: '0.3s' }}>
           Include times for fixed appointments
         </p>
+      </div>
       </div>
     </div>
   );

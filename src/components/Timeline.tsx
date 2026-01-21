@@ -4,6 +4,7 @@ import { useStore } from '@/lib/store';
 import { Task } from '@/types';
 import { cn, formatHour, formatTime, calculateProgress } from '@/lib/utils';
 import { TaskCard } from './TaskCard';
+import { UserMenu } from './UserMenu';
 import { Plus } from 'lucide-react';
 
 interface TimelineProps {
@@ -51,14 +52,17 @@ export function Timeline({ onNewDay }: TimelineProps) {
                 {completed}/{total} complete · {formatTime(remainingMinutes)} left
               </p>
             </div>
-            <button
-              onClick={onNewDay}
-              className="w-10 h-10 rounded-full bg-card/60 border border-border/30 flex items-center justify-center
-                       hover:bg-card transition-colors"
-              title="Start new day"
-            >
-              <Plus className="w-5 h-5 text-muted-foreground" />
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={onNewDay}
+                className="w-9 h-9 rounded-full bg-card/60 border border-border/30 flex items-center justify-center
+                         hover:bg-card transition-colors"
+                title="Start new day"
+              >
+                <Plus className="w-4 h-4 text-muted-foreground" />
+              </button>
+              <UserMenu />
+            </div>
           </div>
 
           {/* Progress bar */}
