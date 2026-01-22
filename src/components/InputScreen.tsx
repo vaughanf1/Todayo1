@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { User } from 'lucide-react';
+import { FileText } from 'lucide-react';
 import { getGreeting } from '@/lib/utils';
 import { useKnowledgeBase } from '@/lib/useKnowledgeBase';
 import { UserMenu } from './UserMenu';
@@ -15,10 +15,8 @@ interface InputScreenProps {
 export function InputScreen({ onSubmit, isLoading }: InputScreenProps) {
   const [text, setText] = useState('');
   const [showKnowledgeBase, setShowKnowledgeBase] = useState(false);
-  const { getContextString, knowledgeBase } = useKnowledgeBase();
+  const { getContextString, hasFiles } = useKnowledgeBase();
   const greeting = getGreeting();
-
-  const hasKnowledgeBase = knowledgeBase.about || knowledgeBase.priorities || knowledgeBase.preferences;
 
   const handleSubmit = () => {
     if (text.trim() && !isLoading) {
@@ -41,13 +39,13 @@ export function InputScreen({ onSubmit, isLoading }: InputScreenProps) {
           onClick={() => setShowKnowledgeBase(true)}
           className={`w-9 h-9 rounded-full border flex items-center justify-center
                    hover:bg-card transition-colors ${
-                     hasKnowledgeBase
+                     hasFiles
                        ? 'bg-foreground/10 border-foreground/30'
                        : 'bg-card/60 border-border/30'
                    }`}
           title="Knowledge Base"
         >
-          <User className={`w-4 h-4 ${hasKnowledgeBase ? 'text-foreground' : 'text-muted-foreground'}`} />
+          <FileText className={`w-4 h-4 ${hasFiles ? 'text-foreground' : 'text-muted-foreground'}`} />
         </button>
         <UserMenu />
       </header>

@@ -44,13 +44,6 @@ export interface AIParseResponse {
   tasks: ParsedTask[];
 }
 
-// Knowledge base for user context
-export interface KnowledgeBase {
-  about: string; // Who the user is, their role, goals
-  priorities: string; // Current priorities, what's important
-  preferences: string; // Work style preferences
-}
-
 // Calendar view type
 export type CalendarView = 'day' | 'week' | 'month';
 

@@ -1,18 +1,17 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { KnowledgeBase } from '@/types';
+
+export interface KnowledgeFile {
+  name: string;
+  content: string;
+  addedAt: string;
+}
 
 const STORAGE_KEY = 'todayo_knowledge_base';
 
-const defaultKnowledgeBase: KnowledgeBase = {
-  about: '',
-  priorities: '',
-  preferences: '',
-};
-
 export function useKnowledgeBase() {
-  const [knowledgeBase, setKnowledgeBaseState] = useState<KnowledgeBase>(defaultKnowledgeBase);
+  const [files, setFiles] = useState<KnowledgeFile[]>([]);
   const [isLoaded, setIsLoaded] = useState(false);
 
   // Load from localStorage on mount
@@ -20,8 +19,8 @@ export function useKnowledgeBase() {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved) {
       try {
-        const parsed = JSON.parse(saved) as KnowledgeBase;
-        setKnowledgeBaseState(parsed);
+        const parsed = JSON.parse(saved) as KnowledgeFile[];
+        setFiles(parsed);
       } catch {
         // Invalid state, use default
       }
@@ -29,40 +28,52 @@ export function useKnowledgeBase() {
     setIsLoaded(true);
   }, []);
 
-  // Save to localStorage on change
-  const setKnowledgeBase = useCallback((updates: Partial<KnowledgeBase>) => {
-    setKnowledgeBaseState(prev => {
-      const newState = { ...prev, ...updates };
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(newState));
-      return newState;
+  // Save to localStorage whenever files change
+  useEffect(() => {
+    if (isLoaded) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(files));
+    }
+  }, [files, isLoaded]);
+
+  const addFile = useCallback((file: KnowledgeFile) => {
+    setFiles(prev => {
+      // Check if file with same name already exists
+      const exists = prev.some(f => f.name === file.name);
+      if (exists) {
+        // Replace existing file
+        return prev.map(f => f.name === file.name ? file : f);
+      }
+      return [...prev, file];
     });
   }, []);
 
-  const clearKnowledgeBase = useCallback(() => {
-    setKnowledgeBaseState(defaultKnowledgeBase);
+  const removeFile = useCallback((index: number) => {
+    setFiles(prev => prev.filter((_, i) => i !== index));
+  }, []);
+
+  const clearFiles = useCallback(() => {
+    setFiles([]);
     localStorage.removeItem(STORAGE_KEY);
   }, []);
 
-  // Get a formatted string for AI context
+  // Get combined content for AI context
   const getContextString = useCallback(() => {
-    const parts: string[] = [];
-    if (knowledgeBase.about.trim()) {
-      parts.push(`About the user: ${knowledgeBase.about.trim()}`);
-    }
-    if (knowledgeBase.priorities.trim()) {
-      parts.push(`Current priorities: ${knowledgeBase.priorities.trim()}`);
-    }
-    if (knowledgeBase.preferences.trim()) {
-      parts.push(`Work preferences: ${knowledgeBase.preferences.trim()}`);
-    }
-    return parts.join('\n');
-  }, [knowledgeBase]);
+    if (files.length === 0) return '';
+
+    const parts = files.map(file => {
+      return `=== ${file.name} ===\n${file.content}`;
+    });
+
+    return `USER KNOWLEDGE BASE:\n${parts.join('\n\n')}`;
+  }, [files]);
 
   return {
-    knowledgeBase,
-    setKnowledgeBase,
-    clearKnowledgeBase,
+    files,
+    addFile,
+    removeFile,
+    clearFiles,
     getContextString,
     isLoaded,
+    hasFiles: files.length > 0,
   };
 }
