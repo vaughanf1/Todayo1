@@ -2,7 +2,6 @@
 
 import { Task } from '@/types';
 import { cn, formatTime, getTaskGroupLabel, getTaskGroupColor } from '@/lib/utils';
-import { GripVertical } from 'lucide-react';
 
 interface TaskCardProps {
   task: Task;
@@ -33,22 +32,36 @@ export function TaskCard({
   const isActive = task.status === 'active';
   const isPaused = task.status === 'paused';
 
-  const canDrag = !isCompleted && !isSkipped && onDragStart !== undefined;
+  const canDrag = !isCompleted && !isSkipped && onDragStart !== undefined && index !== undefined;
 
   const handleDragStart = (e: React.DragEvent) => {
-    if (!canDrag || index === undefined) return;
+    if (!canDrag) return;
     e.dataTransfer.effectAllowed = 'move';
-    onDragStart?.(index);
+    e.dataTransfer.setData('text/plain', String(index));
+    onDragStart?.(index!);
   };
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
-    if (index === undefined) return;
-    onDragOver?.(index);
+    e.dataTransfer.dropEffect = 'move';
+    if (index !== undefined) {
+      onDragOver?.(index);
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    onDragEnd?.();
   };
 
   const handleDragEnd = () => {
     onDragEnd?.();
+  };
+
+  const handleClick = () => {
+    if (!isCompleted && !isSkipped) {
+      onStart();
+    }
   };
 
   return (
@@ -56,35 +69,25 @@ export function TaskCard({
       draggable={canDrag}
       onDragStart={handleDragStart}
       onDragOver={handleDragOver}
+      onDrop={handleDrop}
       onDragEnd={handleDragEnd}
+      onClick={handleClick}
       className={cn(
-        'w-full text-left rounded-xl transition-all duration-200 group',
+        'w-full text-left rounded-xl transition-all duration-200 group cursor-pointer select-none',
         isCompact ? 'p-3' : 'p-4',
         isCompleted || isSkipped
-          ? 'opacity-40'
-          : 'hover-lift',
+          ? 'opacity-40 cursor-default'
+          : 'hover-lift active:scale-[0.98]',
         isActive && 'ring-1 ring-foreground/20',
         isPaused && 'ring-1 ring-orange-500/30',
         'bg-card/60 backdrop-blur-sm border border-border/30',
-        isDragging && 'opacity-50 scale-95',
-        isDragOver && 'border-foreground/50 bg-card/80'
+        canDrag && 'cursor-grab active:cursor-grabbing',
+        isDragging && 'opacity-50 scale-95 shadow-lg',
+        isDragOver && 'border-foreground/50 bg-card/80 scale-[1.02]'
       )}
     >
-      <div className="flex items-start gap-2">
-        {/* Drag handle */}
-        {canDrag && (
-          <div className="flex-shrink-0 cursor-grab active:cursor-grabbing opacity-30 hover:opacity-60 transition-opacity pt-0.5">
-            <GripVertical className="w-4 h-4 text-muted-foreground" />
-          </div>
-        )}
-
-        <button
-          onClick={onStart}
-          disabled={isCompleted || isSkipped}
-          className="flex-1 text-left disabled:cursor-default"
-        >
-          <div className="flex items-start justify-between gap-3">
-            <div className="flex-1 min-w-0">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex-1 min-w-0">
           {/* Title */}
           <div className="flex items-center gap-2">
             {isCompleted && (
@@ -132,22 +135,20 @@ export function TaskCard({
           </div>
         </div>
 
-            {/* Priority dots */}
-            {!isCompleted && !isSkipped && (
-              <div className="flex gap-0.5 opacity-40 group-hover:opacity-70 transition-opacity">
-                {[1, 2, 3, 4, 5].map(i => (
-                  <div
-                    key={i}
-                    className={cn(
-                      'w-1 h-3 rounded-full transition-colors',
-                      i <= task.priority ? 'bg-foreground' : 'bg-muted'
-                    )}
-                  />
-                ))}
-              </div>
-            )}
+        {/* Priority dots */}
+        {!isCompleted && !isSkipped && (
+          <div className="flex gap-0.5 opacity-40 group-hover:opacity-70 transition-opacity">
+            {[1, 2, 3, 4, 5].map(i => (
+              <div
+                key={i}
+                className={cn(
+                  'w-1 h-3 rounded-full transition-colors',
+                  i <= task.priority ? 'bg-foreground' : 'bg-muted'
+                )}
+              />
+            ))}
           </div>
-        </button>
+        )}
       </div>
     </div>
   );
