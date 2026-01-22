@@ -44,6 +44,16 @@ export interface AIParseResponse {
   tasks: ParsedTask[];
 }
 
+// Knowledge base for user context
+export interface KnowledgeBase {
+  about: string; // Who the user is, their role, goals
+  priorities: string; // Current priorities, what's important
+  preferences: string; // Work style preferences
+}
+
+// Calendar view type
+export type CalendarView = 'day' | 'week' | 'month';
+
 // App state
 export type AppView = 'input' | 'timeline' | 'active-task';
 
@@ -53,4 +63,6 @@ export interface AppState {
   activeTaskId: string | null;
   timerSeconds: number;
   isTimerRunning: boolean;
+  timerEndTime: number | null; // Timestamp when timer should end (for background accuracy)
+  calendarView: CalendarView;
 }

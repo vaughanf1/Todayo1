@@ -37,7 +37,7 @@ Respond ONLY with valid JSON in this exact format (no markdown, no explanation):
 
 export async function POST(request: NextRequest) {
   try {
-    const { text } = await request.json();
+    const { text, knowledgeContext } = await request.json();
 
     if (!text || typeof text !== 'string') {
       return NextResponse.json(
@@ -51,6 +51,12 @@ export async function POST(request: NextRequest) {
       console.log('No OPENAI_API_KEY found, using mock response');
       const mockResponse = generateMockResponse(text);
       return NextResponse.json(mockResponse);
+    }
+
+    // Build the user message with optional knowledge context
+    let userMessage = `Parse these tasks:\n\n${text}`;
+    if (knowledgeContext && typeof knowledgeContext === 'string' && knowledgeContext.trim()) {
+      userMessage = `USER CONTEXT (use this to better prioritize tasks):\n${knowledgeContext}\n\n---\n\nParse these tasks:\n\n${text}`;
     }
 
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -68,7 +74,7 @@ export async function POST(request: NextRequest) {
           },
           {
             role: 'user',
-            content: `Parse these tasks:\n\n${text}`,
+            content: userMessage,
           },
         ],
         temperature: 0.3,

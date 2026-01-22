@@ -1,21 +1,29 @@
 'use client';
 
 import { useState } from 'react';
+import { User } from 'lucide-react';
 import { getGreeting } from '@/lib/utils';
+import { useKnowledgeBase } from '@/lib/useKnowledgeBase';
 import { UserMenu } from './UserMenu';
+import { KnowledgeBase } from './KnowledgeBase';
 
 interface InputScreenProps {
-  onSubmit: (text: string) => void;
+  onSubmit: (text: string, knowledgeContext?: string) => void;
   isLoading: boolean;
 }
 
 export function InputScreen({ onSubmit, isLoading }: InputScreenProps) {
   const [text, setText] = useState('');
+  const [showKnowledgeBase, setShowKnowledgeBase] = useState(false);
+  const { getContextString, knowledgeBase } = useKnowledgeBase();
   const greeting = getGreeting();
+
+  const hasKnowledgeBase = knowledgeBase.about || knowledgeBase.priorities || knowledgeBase.preferences;
 
   const handleSubmit = () => {
     if (text.trim() && !isLoading) {
-      onSubmit(text.trim());
+      const context = getContextString();
+      onSubmit(text.trim(), context || undefined);
     }
   };
 
@@ -28,9 +36,27 @@ export function InputScreen({ onSubmit, isLoading }: InputScreenProps) {
   return (
     <div className="min-h-screen flex flex-col px-6 py-12">
       {/* Header */}
-      <header className="flex justify-end mb-8">
+      <header className="flex justify-end gap-2 mb-8">
+        <button
+          onClick={() => setShowKnowledgeBase(true)}
+          className={`w-9 h-9 rounded-full border flex items-center justify-center
+                   hover:bg-card transition-colors ${
+                     hasKnowledgeBase
+                       ? 'bg-foreground/10 border-foreground/30'
+                       : 'bg-card/60 border-border/30'
+                   }`}
+          title="Knowledge Base"
+        >
+          <User className={`w-4 h-4 ${hasKnowledgeBase ? 'text-foreground' : 'text-muted-foreground'}`} />
+        </button>
         <UserMenu />
       </header>
+
+      {/* Knowledge Base Modal */}
+      <KnowledgeBase
+        isOpen={showKnowledgeBase}
+        onClose={() => setShowKnowledgeBase(false)}
+      />
 
       <div className="flex-1 flex flex-col items-center justify-center">
       <div className="w-full max-w-md animate-fade-in">

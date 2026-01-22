@@ -17,7 +17,7 @@ function AppContent() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const handleSubmit = async (text: string) => {
+  const handleSubmit = async (text: string, knowledgeContext?: string) => {
     setIsLoading(true);
     setError(null);
 
@@ -25,7 +25,7 @@ function AppContent() {
       const response = await fetch('/api/parse', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text }),
+        body: JSON.stringify({ text, knowledgeContext }),
       });
 
       if (!response.ok) {

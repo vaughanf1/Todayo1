@@ -5,6 +5,9 @@ import { Task } from '@/types';
 import { cn, formatHour, formatTime, calculateProgress } from '@/lib/utils';
 import { TaskCard } from './TaskCard';
 import { UserMenu } from './UserMenu';
+import { CalendarViewSelector } from './CalendarViewSelector';
+import { WeekView } from './WeekView';
+import { MonthView } from './MonthView';
 import { Plus } from 'lucide-react';
 
 interface TimelineProps {
@@ -12,8 +15,8 @@ interface TimelineProps {
 }
 
 export function Timeline({ onNewDay }: TimelineProps) {
-  const { state, startTask } = useStore();
-  const { dayPlan } = state;
+  const { state, startTask, setCalendarView } = useStore();
+  const { dayPlan, calendarView } = state;
 
   if (!dayPlan) return null;
 
@@ -53,6 +56,10 @@ export function Timeline({ onNewDay }: TimelineProps) {
               </p>
             </div>
             <div className="flex items-center gap-2">
+              <CalendarViewSelector
+                value={calendarView}
+                onChange={setCalendarView}
+              />
               <button
                 onClick={onNewDay}
                 className="w-9 h-9 rounded-full bg-card/60 border border-border/30 flex items-center justify-center
@@ -75,67 +82,74 @@ export function Timeline({ onNewDay }: TimelineProps) {
         </div>
       </header>
 
-      {/* Timeline */}
-      <div className="flex-1 px-6 py-6">
-        <div className="max-w-lg mx-auto">
-          {hours.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-64 text-center animate-fade-in">
-              <p className="text-muted-foreground mb-4">No tasks scheduled</p>
-              <button
-                onClick={onNewDay}
-                className="text-foreground font-medium hover:opacity-70 transition-opacity"
-              >
-                Add tasks
-              </button>
-            </div>
-          ) : (
-            <div className="space-y-1">
-              {hours.map((hour, idx) => {
-                const tasks = tasksByHour[hour];
-                const isCurrent = hour === currentHour;
+      {/* Content based on calendar view */}
+      {calendarView === 'week' ? (
+        <WeekView />
+      ) : calendarView === 'month' ? (
+        <MonthView />
+      ) : (
+        /* Day View - Timeline */
+        <div className="flex-1 px-6 py-6">
+          <div className="max-w-lg mx-auto">
+            {hours.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-64 text-center animate-fade-in">
+                <p className="text-muted-foreground mb-4">No tasks scheduled</p>
+                <button
+                  onClick={onNewDay}
+                  className="text-foreground font-medium hover:opacity-70 transition-opacity"
+                >
+                  Add tasks
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-1">
+                {hours.map((hour, idx) => {
+                  const tasks = tasksByHour[hour];
+                  const isCurrent = hour === currentHour;
 
-                return (
-                  <div
-                    key={hour}
-                    className="flex gap-4 animate-slide-up"
-                    style={{ animationDelay: `${idx * 0.05}s` }}
-                  >
-                    {/* Time column */}
-                    <div className="w-14 flex-shrink-0 pt-4 text-right">
-                      <span className={cn(
-                        'text-xs font-medium',
-                        isCurrent ? 'text-foreground' : 'text-muted-foreground'
-                      )}>
-                        {formatHour(hour)}
-                      </span>
-                    </div>
+                  return (
+                    <div
+                      key={hour}
+                      className="flex gap-4 animate-slide-up"
+                      style={{ animationDelay: `${idx * 0.05}s` }}
+                    >
+                      {/* Time column */}
+                      <div className="w-14 flex-shrink-0 pt-4 text-right">
+                        <span className={cn(
+                          'text-xs font-medium',
+                          isCurrent ? 'text-foreground' : 'text-muted-foreground'
+                        )}>
+                          {formatHour(hour)}
+                        </span>
+                      </div>
 
-                    {/* Tasks column */}
-                    <div className="flex-1 pb-4 border-l border-border/30 pl-4 relative">
-                      {/* Current time indicator */}
-                      {isCurrent && (
-                        <div className="absolute -left-1 top-4 flex items-center gap-2">
-                          <div className="w-2 h-2 rounded-full bg-foreground animate-pulse-subtle" />
+                      {/* Tasks column */}
+                      <div className="flex-1 pb-4 border-l border-border/30 pl-4 relative">
+                        {/* Current time indicator */}
+                        {isCurrent && (
+                          <div className="absolute -left-1 top-4 flex items-center gap-2">
+                            <div className="w-2 h-2 rounded-full bg-foreground animate-pulse-subtle" />
+                          </div>
+                        )}
+
+                        <div className="space-y-2">
+                          {tasks.map(task => (
+                            <TaskCard
+                              key={task.id}
+                              task={task}
+                              onStart={() => startTask(task.id)}
+                            />
+                          ))}
                         </div>
-                      )}
-
-                      <div className="space-y-2">
-                        {tasks.map(task => (
-                          <TaskCard
-                            key={task.id}
-                            task={task}
-                            onStart={() => startTask(task.id)}
-                          />
-                        ))}
                       </div>
                     </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Floating CTA */}
       {total > 0 && completed < total && (

@@ -9,7 +9,7 @@ interface ScheduleConfig {
 
 const DEFAULT_CONFIG: ScheduleConfig = {
   dayStartHour: 9,
-  dayEndHour: 18,
+  dayEndHour: 22, // Extended to 10 PM for flexibility
   bufferMinutes: 5,
 };
 
@@ -27,8 +27,14 @@ export function scheduleTasks(
   // Sort flexible tasks by priority (highest first)
   flexibleTasks.sort((a, b) => b.priority - a.priority);
 
+  // Get current time in minutes from midnight
+  const now = new Date();
+  const currentTimeMinutes = now.getHours() * 60 + now.getMinutes();
+
   // Create time slots (in minutes from midnight)
-  const dayStart = dayStartHour * 60;
+  // Use current time if it's later than the configured start, otherwise use configured start
+  const configuredDayStart = dayStartHour * 60;
+  const dayStart = Math.max(configuredDayStart, currentTimeMinutes);
   const dayEnd = dayEndHour * 60;
 
   // Track occupied time slots

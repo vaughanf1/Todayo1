@@ -172,6 +172,17 @@
   50% { opacity: 0.7; }
 }
 
+@keyframes scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
 .animate-fade-in {
   animation: fade-in 0.3s ease-out;
 }
@@ -182,6 +193,10 @@
 
 .animate-pulse-subtle {
   animation: pulse-subtle 2s ease-in-out infinite;
+}
+
+.animate-scale-in {
+  animation: scale-in 0.2s ease-out;
 }
 
 /* Scrollbar styling */
