@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useStore } from '@/lib/store';
 import { Task } from '@/types';
 import { cn, formatHour, formatTime, calculateProgress } from '@/lib/utils';
@@ -18,8 +18,24 @@ interface TimelineProps {
 export function Timeline({ onNewDay }: TimelineProps) {
   const { state, startTask, setCalendarView, reorderTasks } = useStore();
   const { dayPlan, calendarView } = state;
-  const [dragIndex, setDragIndex] = useState<number | null>(null);
-  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+
+  // Use refs for drag indices (synchronous access)
+  const dragIndexRef = useRef<number | null>(null);
+  const dragOverIndexRef = useRef<number | null>(null);
+
+  // State for visual feedback only
+  const [dragState, setDragState] = useState<{ dragging: number | null; over: number | null }>({ dragging: null, over: null });
+
+  // Current time state
+  const [currentTime, setCurrentTime] = useState(new Date());
+
+  // Update current time every minute
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setCurrentTime(new Date());
+    }, 60000);
+    return () => clearInterval(interval);
+  }, []);
 
   if (!dayPlan) return null;
 
@@ -37,32 +53,45 @@ export function Timeline({ onNewDay }: TimelineProps) {
   }, {});
 
   const hours = Object.keys(tasksByHour).map(Number).sort((a, b) => a - b);
-  const currentHour = new Date().getHours();
+  const currentHour = currentTime.getHours();
 
-  // Drag handlers
+  // Drag handlers using refs for synchronous access
   const handleDragStart = (index: number) => {
-    setDragIndex(index);
+    dragIndexRef.current = index;
+    setDragState({ dragging: index, over: null });
   };
 
   const handleDragOver = (index: number) => {
-    if (dragIndex !== null && index !== dragIndex) {
-      setDragOverIndex(index);
+    if (dragIndexRef.current !== null && index !== dragIndexRef.current) {
+      dragOverIndexRef.current = index;
+      setDragState(prev => ({ ...prev, over: index }));
     }
   };
 
   const handleDragEnd = () => {
-    if (dragIndex !== null && dragOverIndex !== null && dragIndex !== dragOverIndex) {
-      reorderTasks(dragIndex, dragOverIndex);
+    const fromIndex = dragIndexRef.current;
+    const toIndex = dragOverIndexRef.current;
+
+    if (fromIndex !== null && toIndex !== null && fromIndex !== toIndex) {
+      reorderTasks(fromIndex, toIndex);
     }
-    setDragIndex(null);
-    setDragOverIndex(null);
+
+    // Reset refs and state
+    dragIndexRef.current = null;
+    dragOverIndexRef.current = null;
+    setDragState({ dragging: null, over: null });
   };
 
-  const today = new Date();
-  const dateString = today.toLocaleDateString('en-US', {
+  const dateString = currentTime.toLocaleDateString('en-US', {
     weekday: 'long',
     month: 'short',
     day: 'numeric',
+  });
+
+  const timeString = currentTime.toLocaleTimeString('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
   });
 
   return (
@@ -72,7 +101,10 @@ export function Timeline({ onNewDay }: TimelineProps) {
         <div className="max-w-lg mx-auto">
           <div className="flex items-center justify-between mb-4">
             <div>
-              <h1 className="text-xl font-medium text-foreground">{dateString}</h1>
+              <div className="flex items-baseline gap-3">
+                <h1 className="text-xl font-medium text-foreground">{dateString}</h1>
+                <span className="text-lg font-light text-muted-foreground">{timeString}</span>
+              </div>
               <p className="text-sm text-muted-foreground mt-0.5">
                 {completed}/{total} complete · {formatTime(remainingMinutes)} left
               </p>
@@ -166,8 +198,8 @@ export function Timeline({ onNewDay }: TimelineProps) {
                                 onDragStart={handleDragStart}
                                 onDragOver={handleDragOver}
                                 onDragEnd={handleDragEnd}
-                                isDragging={dragIndex === globalIndex}
-                                isDragOver={dragOverIndex === globalIndex}
+                                isDragging={dragState.dragging === globalIndex}
+                                isDragOver={dragState.over === globalIndex}
                               />
                             );
                           })}
