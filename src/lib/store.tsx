@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useReducer, useEffect, useCallback, ReactNode } from 'react';
 import { AppState, AppView, CalendarView, DayPlan, Task, TaskStatus } from '@/types';
-import { generateId, getTodayDate } from './utils';
+import { generateId, getTodayDate, minutesToTime, parseTimeToMinutes } from './utils';
 
 type Action =
   | { type: 'SET_VIEW'; view: AppView }
@@ -17,6 +17,8 @@ type Action =
   | { type: 'RESET_TIMER' }
   | { type: 'SYNC_TIMER' }
   | { type: 'SET_CALENDAR_VIEW'; calendarView: CalendarView }
+  | { type: 'RESCHEDULE_REMAINING_TASKS' }
+  | { type: 'REORDER_TASKS'; fromIndex: number; toIndex: number }
   | { type: 'LOAD_STATE'; state: AppState };
 
 const initialState: AppState = {
@@ -118,6 +120,81 @@ function reducer(state: AppState, action: Action): AppState {
     case 'SET_CALENDAR_VIEW':
       return { ...state, calendarView: action.calendarView };
 
+    case 'REORDER_TASKS': {
+      if (!state.dayPlan) return state;
+
+      const tasks = [...state.dayPlan.tasks];
+      const [movedTask] = tasks.splice(action.fromIndex, 1);
+      tasks.splice(action.toIndex, 0, movedTask);
+
+      // Update sort orders
+      tasks.forEach((task, index) => {
+        task.sortOrder = index;
+      });
+
+      return {
+        ...state,
+        dayPlan: { ...state.dayPlan, tasks },
+      };
+    }
+
+    case 'RESCHEDULE_REMAINING_TASKS': {
+      if (!state.dayPlan) return state;
+
+      // Get current time in minutes from midnight
+      const now = new Date();
+      const currentTimeMinutes = now.getHours() * 60 + now.getMinutes();
+      const bufferMinutes = 5;
+
+      // Get remaining tasks (pending or paused) sorted by their current order
+      const remainingTasks = state.dayPlan.tasks
+        .filter(t => t.status === 'pending' || t.status === 'paused')
+        .sort((a, b) => {
+          const aStart = a.scheduledStart ? parseTimeToMinutes(a.scheduledStart) : 0;
+          const bStart = b.scheduledStart ? parseTimeToMinutes(b.scheduledStart) : 0;
+          return aStart - bStart;
+        });
+
+      // Build a map of new scheduled times
+      const newSchedules = new Map<string, { start: string; end: string }>();
+      let nextStartTime = currentTimeMinutes;
+
+      for (const task of remainingTasks) {
+        // Check if task has a fixed time that's still in the future
+        const originalStart = task.scheduledStart ? parseTimeToMinutes(task.scheduledStart) : 0;
+
+        // If the task's original time is in the future and it was a fixed-time task, keep it
+        // Otherwise, reschedule from current time
+        const startTime = Math.max(nextStartTime, originalStart > currentTimeMinutes ? originalStart : nextStartTime);
+        const endTime = startTime + task.estimatedMinutes;
+
+        newSchedules.set(task.id, {
+          start: minutesToTime(startTime),
+          end: minutesToTime(endTime),
+        });
+
+        nextStartTime = endTime + bufferMinutes;
+      }
+
+      // Update all tasks with new schedules
+      const updatedTasks = state.dayPlan.tasks.map(task => {
+        const newSchedule = newSchedules.get(task.id);
+        if (newSchedule) {
+          return {
+            ...task,
+            scheduledStart: newSchedule.start,
+            scheduledEnd: newSchedule.end,
+          };
+        }
+        return task;
+      });
+
+      return {
+        ...state,
+        dayPlan: { ...state.dayPlan, tasks: updatedTasks },
+      };
+    }
+
     case 'LOAD_STATE': {
       // If there was a running timer with an end time, recalculate remaining seconds
       if (action.state.timerEndTime && action.state.isTimerRunning) {
@@ -143,6 +220,7 @@ interface StoreContextType {
   completeTask: () => void;
   skipTask: () => void;
   closeActiveTask: () => void;
+  reorderTasks: (fromIndex: number, toIndex: number) => void;
 }
 
 const StoreContext = createContext<StoreContextType | null>(null);
@@ -229,6 +307,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       dispatch({ type: 'UPDATE_TASK_STATUS', taskId: state.activeTaskId, status: 'completed' });
     }
     dispatch({ type: 'SET_ACTIVE_TASK', taskId: null });
+    // Reschedule remaining tasks to start from current time
+    dispatch({ type: 'RESCHEDULE_REMAINING_TASKS' });
   }, [state.activeTaskId]);
 
   const skipTask = useCallback(() => {
@@ -248,6 +328,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     dispatch({ type: 'SET_ACTIVE_TASK', taskId: null });
   }, [state.activeTaskId, state.dayPlan?.tasks]);
 
+  const reorderTasks = useCallback((fromIndex: number, toIndex: number) => {
+    dispatch({ type: 'REORDER_TASKS', fromIndex, toIndex });
+    // Reschedule tasks after reordering
+    dispatch({ type: 'RESCHEDULE_REMAINING_TASKS' });
+  }, []);
+
   return (
     <StoreContext.Provider value={{
       state,
@@ -260,6 +346,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       completeTask,
       skipTask,
       closeActiveTask,
+      reorderTasks,
     }}>
       {children}
     </StoreContext.Provider>

@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { useStore } from '@/lib/store';
 import { Task } from '@/types';
 import { cn, formatHour, formatTime, calculateProgress } from '@/lib/utils';
@@ -15,8 +16,10 @@ interface TimelineProps {
 }
 
 export function Timeline({ onNewDay }: TimelineProps) {
-  const { state, startTask, setCalendarView } = useStore();
+  const { state, startTask, setCalendarView, reorderTasks } = useStore();
   const { dayPlan, calendarView } = state;
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
 
   if (!dayPlan) return null;
 
@@ -35,6 +38,25 @@ export function Timeline({ onNewDay }: TimelineProps) {
 
   const hours = Object.keys(tasksByHour).map(Number).sort((a, b) => a - b);
   const currentHour = new Date().getHours();
+
+  // Drag handlers
+  const handleDragStart = (index: number) => {
+    setDragIndex(index);
+  };
+
+  const handleDragOver = (index: number) => {
+    if (dragIndex !== null && index !== dragIndex) {
+      setDragOverIndex(index);
+    }
+  };
+
+  const handleDragEnd = () => {
+    if (dragIndex !== null && dragOverIndex !== null && dragIndex !== dragOverIndex) {
+      reorderTasks(dragIndex, dragOverIndex);
+    }
+    setDragIndex(null);
+    setDragOverIndex(null);
+  };
 
   const today = new Date();
   const dateString = today.toLocaleDateString('en-US', {
@@ -133,13 +155,22 @@ export function Timeline({ onNewDay }: TimelineProps) {
                         )}
 
                         <div className="space-y-2">
-                          {tasks.map(task => (
-                            <TaskCard
-                              key={task.id}
-                              task={task}
-                              onStart={() => startTask(task.id)}
-                            />
-                          ))}
+                          {tasks.map(task => {
+                            const globalIndex = dayPlan.tasks.findIndex(t => t.id === task.id);
+                            return (
+                              <TaskCard
+                                key={task.id}
+                                task={task}
+                                onStart={() => startTask(task.id)}
+                                index={globalIndex}
+                                onDragStart={handleDragStart}
+                                onDragOver={handleDragOver}
+                                onDragEnd={handleDragEnd}
+                                isDragging={dragIndex === globalIndex}
+                                isDragOver={dragOverIndex === globalIndex}
+                              />
+                            );
+                          })}
                         </div>
                       </div>
                     </div>

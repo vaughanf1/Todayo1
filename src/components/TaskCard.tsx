@@ -2,24 +2,61 @@
 
 import { Task } from '@/types';
 import { cn, formatTime, getTaskGroupLabel, getTaskGroupColor } from '@/lib/utils';
+import { GripVertical } from 'lucide-react';
 
 interface TaskCardProps {
   task: Task;
   onStart: () => void;
   isCompact?: boolean;
+  index?: number;
+  onDragStart?: (index: number) => void;
+  onDragOver?: (index: number) => void;
+  onDragEnd?: () => void;
+  isDragging?: boolean;
+  isDragOver?: boolean;
 }
 
-export function TaskCard({ task, onStart, isCompact = false }: TaskCardProps) {
+export function TaskCard({
+  task,
+  onStart,
+  isCompact = false,
+  index,
+  onDragStart,
+  onDragOver,
+  onDragEnd,
+  isDragging,
+  isDragOver,
+}: TaskCardProps) {
   const groupColor = getTaskGroupColor(task.group);
   const isCompleted = task.status === 'completed';
   const isSkipped = task.status === 'skipped';
   const isActive = task.status === 'active';
   const isPaused = task.status === 'paused';
 
+  const canDrag = !isCompleted && !isSkipped && onDragStart !== undefined;
+
+  const handleDragStart = (e: React.DragEvent) => {
+    if (!canDrag || index === undefined) return;
+    e.dataTransfer.effectAllowed = 'move';
+    onDragStart?.(index);
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    if (index === undefined) return;
+    onDragOver?.(index);
+  };
+
+  const handleDragEnd = () => {
+    onDragEnd?.();
+  };
+
   return (
-    <button
-      onClick={onStart}
-      disabled={isCompleted || isSkipped}
+    <div
+      draggable={canDrag}
+      onDragStart={handleDragStart}
+      onDragOver={handleDragOver}
+      onDragEnd={handleDragEnd}
       className={cn(
         'w-full text-left rounded-xl transition-all duration-200 group',
         isCompact ? 'p-3' : 'p-4',
@@ -28,12 +65,26 @@ export function TaskCard({ task, onStart, isCompact = false }: TaskCardProps) {
           : 'hover-lift',
         isActive && 'ring-1 ring-foreground/20',
         isPaused && 'ring-1 ring-orange-500/30',
-        'disabled:cursor-default',
-        'bg-card/60 backdrop-blur-sm border border-border/30'
+        'bg-card/60 backdrop-blur-sm border border-border/30',
+        isDragging && 'opacity-50 scale-95',
+        isDragOver && 'border-foreground/50 bg-card/80'
       )}
     >
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex-1 min-w-0">
+      <div className="flex items-start gap-2">
+        {/* Drag handle */}
+        {canDrag && (
+          <div className="flex-shrink-0 cursor-grab active:cursor-grabbing opacity-30 hover:opacity-60 transition-opacity pt-0.5">
+            <GripVertical className="w-4 h-4 text-muted-foreground" />
+          </div>
+        )}
+
+        <button
+          onClick={onStart}
+          disabled={isCompleted || isSkipped}
+          className="flex-1 text-left disabled:cursor-default"
+        >
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex-1 min-w-0">
           {/* Title */}
           <div className="flex items-center gap-2">
             {isCompleted && (
@@ -81,21 +132,23 @@ export function TaskCard({ task, onStart, isCompact = false }: TaskCardProps) {
           </div>
         </div>
 
-        {/* Priority dots */}
-        {!isCompleted && !isSkipped && (
-          <div className="flex gap-0.5 opacity-40 group-hover:opacity-70 transition-opacity">
-            {[1, 2, 3, 4, 5].map(i => (
-              <div
-                key={i}
-                className={cn(
-                  'w-1 h-3 rounded-full transition-colors',
-                  i <= task.priority ? 'bg-foreground' : 'bg-muted'
-                )}
-              />
-            ))}
+            {/* Priority dots */}
+            {!isCompleted && !isSkipped && (
+              <div className="flex gap-0.5 opacity-40 group-hover:opacity-70 transition-opacity">
+                {[1, 2, 3, 4, 5].map(i => (
+                  <div
+                    key={i}
+                    className={cn(
+                      'w-1 h-3 rounded-full transition-colors',
+                      i <= task.priority ? 'bg-foreground' : 'bg-muted'
+                    )}
+                  />
+                ))}
+              </div>
+            )}
           </div>
-        )}
+        </button>
       </div>
-    </button>
+    </div>
   );
 }
