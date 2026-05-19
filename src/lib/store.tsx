@@ -161,13 +161,15 @@ function reducer(state: AppState, action: Action): AppState {
       const currentTimeMinutes = now.getHours() * 60 + now.getMinutes();
       const bufferMinutes = 5;
 
-      // Remaining tasks in their CURRENT MANUAL ORDER (array order, set by
-      // drag-reorder) — not re-sorted by clock time, so a drag sticks.
-      const remainingTasks = state.dayPlan.tasks.filter(
-        t => t.status === 'pending' || t.status === 'paused'
-      );
+      // Remaining tasks in their CURRENT MANUAL ORDER (by sortOrder, which
+      // drag-reorder keeps in sync) — not re-sorted by clock time, so the
+      // task you drag to the top genuinely becomes "next".
+      const remainingTasks = state.dayPlan.tasks
+        .filter(t => t.status === 'pending' || t.status === 'paused')
+        .sort((a, b) => a.sortOrder - b.sortOrder);
 
-      // Reflow them back-to-back starting from now, in that order.
+      // Reflow them back-to-back starting from RIGHT NOW, in that order:
+      // first task = current time → current time + its estimate.
       const newSchedules = new Map<string, { start: string; end: string }>();
       let nextStartTime = currentTimeMinutes;
 
@@ -366,6 +368,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     };
 
     dispatch({ type: 'LOAD_STATE', state: restored });
+
+    // On every load/refresh, reflow the remaining tasks so the schedule
+    // is always current — the next task starts "now", not whenever the
+    // plan was first made. Skip it only if a timer is actively running,
+    // so we don't disrupt an in-progress task.
+    const hasOpenTasks = restored.dayPlan?.tasks.some(
+      t => t.status === 'pending' || t.status === 'paused'
+    );
+    if (hasOpenTasks && !timerStillValid) {
+      dispatch({ type: 'RESCHEDULE_REMAINING_TASKS' });
+    }
   }, []);
 
   // Persist everything durable on every change.

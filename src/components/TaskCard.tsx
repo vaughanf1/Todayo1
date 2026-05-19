@@ -3,6 +3,14 @@
 import { Task } from '@/types';
 import { cn, formatTime, getTaskGroupLabel, getTaskGroupColor } from '@/lib/utils';
 
+// "14:05" -> "2:05 PM"
+function to12h(hhmm: string): string {
+  const [h, m] = hhmm.split(':').map(Number);
+  const period = h >= 12 ? 'PM' : 'AM';
+  const hour = h % 12 === 0 ? 12 : h % 12;
+  return `${hour}:${m.toString().padStart(2, '0')} ${period}`;
+}
+
 interface TaskCardProps {
   task: Task;
   onStart: () => void;
@@ -133,6 +141,11 @@ export function TaskCard({
             <span className="text-xs text-muted-foreground">
               {formatTime(task.estimatedMinutes)}
             </span>
+            {task.scheduledStart && task.scheduledEnd && !isCompleted && !isSkipped && (
+              <span className="text-xs font-medium text-foreground/70 tabular-nums">
+                {to12h(task.scheduledStart)} – {to12h(task.scheduledEnd)}
+              </span>
+            )}
           </div>
 
           {/* Defer reason */}

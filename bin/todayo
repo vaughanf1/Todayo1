@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# Launch the Todayo app and open it in the browser.
+# Runs the dev server in the foreground — press Ctrl+C to stop it.
+
+set -e
+
+PROJECT_DIR="/Users/vaughanfawcett/Todayo1"
+URL="http://localhost:3000"
+
+cd "$PROJECT_DIR"
+
+# If the app is already serving, just open it and exit.
+if curl -s -o /dev/null "$URL"; then
+  echo "Todayo is already running — opening $URL"
+  open "$URL"
+  exit 0
+fi
+
+echo "Starting Todayo…"
+npm run dev &
+SERVER_PID=$!
+
+# Make sure the server dies if this script is interrupted/closed.
+trap 'kill "$SERVER_PID" 2>/dev/null' INT TERM EXIT
+
+# Wait (up to ~30s) for the server to come up, then open the browser once.
+for _ in $(seq 1 60); do
+  if curl -s -o /dev/null "$URL"; then
+    open "$URL"
+    break
+  fi
+  sleep 0.5
+done
+
+# Hand the terminal back to the dev server (logs, Ctrl+C to quit).
+wait "$SERVER_PID"

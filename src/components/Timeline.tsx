@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useStore } from '@/lib/store';
 import { Task } from '@/types';
-import { cn, formatHour, formatTime, calculateProgress } from '@/lib/utils';
+import { cn, formatTime, calculateProgress } from '@/lib/utils';
 import { TaskCard } from './TaskCard';
 import { UserMenu } from './UserMenu';
 import { CalendarViewSelector } from './CalendarViewSelector';
@@ -12,6 +12,15 @@ import { MonthView } from './MonthView';
 import { ProjectsPanel } from './ProjectsPanel';
 import { HistoryPanel } from './HistoryPanel';
 import { Plus, FolderKanban, History } from 'lucide-react';
+
+// Minutes-from-midnight (a :00 or :30 slot) -> "9:30 AM"
+function formatSlot(minutes: number): string {
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  const period = h >= 12 ? 'PM' : 'AM';
+  const hour = h % 12 === 0 ? 12 : h % 12;
+  return `${hour}:${m === 0 ? '00' : '30'} ${period}`;
+}
 
 interface TimelineProps {
   onNewDay: () => void;
@@ -46,18 +55,20 @@ export function Timeline({ onNewDay }: TimelineProps) {
   const { completed, total, remainingMinutes } = calculateProgress(dayPlan.tasks);
   const progressPercent = total > 0 ? (completed / total) * 100 : 0;
 
-  // Group tasks by scheduled hour
-  const tasksByHour = dayPlan.tasks.reduce<Record<number, Task[]>>((acc, task) => {
+  // Group tasks into 30-minute slots (minutes-from-midnight, floored to :00/:30)
+  const tasksBySlot = dayPlan.tasks.reduce<Record<number, Task[]>>((acc, task) => {
     if (task.scheduledStart) {
-      const hour = parseInt(task.scheduledStart.split(':')[0]);
-      if (!acc[hour]) acc[hour] = [];
-      acc[hour].push(task);
+      const [h, m] = task.scheduledStart.split(':').map(Number);
+      const slot = Math.floor((h * 60 + m) / 30) * 30;
+      if (!acc[slot]) acc[slot] = [];
+      acc[slot].push(task);
     }
     return acc;
   }, {});
 
-  const hours = Object.keys(tasksByHour).map(Number).sort((a, b) => a - b);
-  const currentHour = currentTime.getHours();
+  const slots = Object.keys(tasksBySlot).map(Number).sort((a, b) => a - b);
+  const currentSlot =
+    Math.floor((currentTime.getHours() * 60 + currentTime.getMinutes()) / 30) * 30;
 
   // Drag handlers using refs for synchronous access
   const handleDragStart = (index: number) => {
@@ -165,7 +176,7 @@ export function Timeline({ onNewDay }: TimelineProps) {
         /* Day View - Timeline */
         <div className="flex-1 px-6 py-6">
           <div className="max-w-lg mx-auto">
-            {hours.length === 0 ? (
+            {slots.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-64 text-center animate-fade-in">
                 <p className="text-muted-foreground mb-4">No tasks scheduled</p>
                 <button
@@ -177,23 +188,23 @@ export function Timeline({ onNewDay }: TimelineProps) {
               </div>
             ) : (
               <div className="space-y-1">
-                {hours.map((hour, idx) => {
-                  const tasks = tasksByHour[hour];
-                  const isCurrent = hour === currentHour;
+                {slots.map((slot, idx) => {
+                  const tasks = tasksBySlot[slot];
+                  const isCurrent = slot === currentSlot;
 
                   return (
                     <div
-                      key={hour}
+                      key={slot}
                       className="flex gap-4 animate-slide-up"
                       style={{ animationDelay: `${idx * 0.05}s` }}
                     >
                       {/* Time column */}
-                      <div className="w-14 flex-shrink-0 pt-4 text-right">
+                      <div className="w-16 flex-shrink-0 pt-4 text-right">
                         <span className={cn(
-                          'text-xs font-medium',
+                          'text-xs font-medium tabular-nums',
                           isCurrent ? 'text-foreground' : 'text-muted-foreground'
                         )}>
-                          {formatHour(hour)}
+                          {formatSlot(slot)}
                         </span>
                       </div>
 
