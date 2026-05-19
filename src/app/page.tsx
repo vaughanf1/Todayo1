@@ -4,6 +4,7 @@ import { useState } from 'react';
 import dynamic from 'next/dynamic';
 import { StoreProvider, useStore } from '@/lib/store';
 import { scheduleTasks } from '@/lib/scheduler';
+import { buildMemoryContext } from '@/lib/persistence';
 import { InputScreen, Timeline, ActiveTask } from '@/components';
 import { AIParseResponse } from '@/types';
 
@@ -22,10 +23,17 @@ function AppContent() {
     setError(null);
 
     try {
+      // Merge durable memory (priorities, projects, recurring tasks) with any
+      // knowledge-base context so the parser stays aligned day to day.
+      const memoryContext = buildMemoryContext(state.memory);
+      const combinedContext =
+        [memoryContext, knowledgeContext].filter(Boolean).join('\n\n---\n\n') ||
+        undefined;
+
       const response = await fetch('/api/parse', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text, knowledgeContext }),
+        body: JSON.stringify({ text, knowledgeContext: combinedContext }),
       });
 
       if (!response.ok) {

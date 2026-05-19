@@ -9,7 +9,9 @@ import { UserMenu } from './UserMenu';
 import { CalendarViewSelector } from './CalendarViewSelector';
 import { WeekView } from './WeekView';
 import { MonthView } from './MonthView';
-import { Plus } from 'lucide-react';
+import { ProjectsPanel } from './ProjectsPanel';
+import { HistoryPanel } from './HistoryPanel';
+import { Plus, FolderKanban, History } from 'lucide-react';
 
 interface TimelineProps {
   onNewDay: () => void;
@@ -28,6 +30,8 @@ export function Timeline({ onNewDay }: TimelineProps) {
 
   // Current time state
   const [currentTime, setCurrentTime] = useState(new Date());
+  const [showProjects, setShowProjects] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
 
   // Update current time every minute
   useEffect(() => {
@@ -114,6 +118,22 @@ export function Timeline({ onNewDay }: TimelineProps) {
                 value={calendarView}
                 onChange={setCalendarView}
               />
+              <button
+                onClick={() => setShowHistory(true)}
+                className="w-9 h-9 rounded-full bg-card/60 border border-border/30 flex items-center justify-center
+                         hover:bg-card transition-colors"
+                title="History"
+              >
+                <History className="w-4 h-4 text-muted-foreground" />
+              </button>
+              <button
+                onClick={() => setShowProjects(true)}
+                className="w-9 h-9 rounded-full bg-card/60 border border-border/30 flex items-center justify-center
+                         hover:bg-card transition-colors"
+                title="Projects & priorities"
+              >
+                <FolderKanban className="w-4 h-4 text-muted-foreground" />
+              </button>
               <button
                 onClick={onNewDay}
                 className="w-9 h-9 rounded-full bg-card/60 border border-border/30 flex items-center justify-center
@@ -245,6 +265,9 @@ export function Timeline({ onNewDay }: TimelineProps) {
           </div>
         </div>
       )}
+
+      <ProjectsPanel isOpen={showProjects} onClose={() => setShowProjects(false)} />
+      <HistoryPanel isOpen={showHistory} onClose={() => setShowHistory(false)} />
     </div>
   );
 }

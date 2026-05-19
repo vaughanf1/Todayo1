@@ -31,10 +31,11 @@ export function scheduleTasks(
   const now = new Date();
   const currentTimeMinutes = now.getHours() * 60 + now.getMinutes();
 
-  // Create time slots (in minutes from midnight)
-  // Use current time if it's later than the configured start, otherwise use configured start
-  const configuredDayStart = dayStartHour * 60;
-  const dayStart = Math.max(configuredDayStart, currentTimeMinutes);
+  // Time-block from the moment the list is entered — whenever that is.
+  // (dayStartHour is kept in the config for callers but no longer floors
+  // the schedule; the physical to-do list starts "now", not at 9 AM.)
+  void dayStartHour;
+  const dayStart = currentTimeMinutes;
   const dayEnd = dayEndHour * 60;
 
   // Track occupied time slots

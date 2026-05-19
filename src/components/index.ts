@@ -4,6 +4,8 @@ export { ActiveTask } from './ActiveTask';
 export { TaskCard } from './TaskCard';
 export { UserMenu } from './UserMenu';
 export { KnowledgeBase } from './KnowledgeBase';
+export { ProjectsPanel } from './ProjectsPanel';
+export { HistoryPanel } from './HistoryPanel';
 export { CalendarViewSelector } from './CalendarViewSelector';
 export { WeekView } from './WeekView';
 export { MonthView } from './MonthView';

@@ -22,6 +22,18 @@ Guidelines:
 - Be realistic with time estimates (most tasks take longer than people think)
 - Preserve any time constraints mentioned
 
+Using USER CONTEXT (when provided):
+- STANDING PRIORITIES / ONGOING PROJECTS: raise the priority score of tasks that clearly advance them; a task tied to a top standing priority or a P1 project should rarely score below 4.
+- RECURRING TASKS: when an input task matches a recurring one, reuse its typical duration and group so estimates stay consistent day to day.
+- This context is background memory, not a task list — never invent tasks from it. Only parse tasks from the actual input.
+
+CRITICAL — Merging vs. Splitting rules:
+- NEVER merge items that the user listed separately with distinct names, titles, or details. If they wrote 3 YouTube videos with different names, those are 3 separate tasks — not one "Watch YouTube videos" task. The user broke them out for a reason.
+- Only merge items if they are truly redundant duplicates (identical or near-identical wording with no distinguishing detail).
+- When in doubt, keep items separate. Losing specificity is worse than having an extra task.
+- Preserve the user's original titles/names as closely as possible — clean up formatting and shorthand, but don't strip out the distinguishing details (e.g. "YT vid - React Tutorial" → "Watch YouTube video: React Tutorial", NOT just "Watch YouTube video").
+- Items sharing a category (e.g. multiple emails, multiple calls) should still be separate tasks if the user listed them separately with different subjects or recipients.
+
 Respond ONLY with valid JSON in this exact format (no markdown, no explanation):
 {
   "tasks": [

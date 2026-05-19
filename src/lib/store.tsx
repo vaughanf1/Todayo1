@@ -1,8 +1,14 @@
 'use client';
 
 import { createContext, useContext, useReducer, useEffect, useCallback, ReactNode } from 'react';
-import { AppState, AppView, CalendarView, DayPlan, Task, TaskStatus } from '@/types';
-import { generateId, getTodayDate, minutesToTime, parseTimeToMinutes } from './utils';
+import { AppState, AppView, CalendarView, DayPlan, Priority, Project, Task, TaskStatus } from '@/types';
+import { generateId, minutesToTime, parseTimeToMinutes } from './utils';
+import {
+  PersistedData,
+  emptyMemory,
+  loadPersisted,
+  savePersisted,
+} from './persistence';
 
 type Action =
   | { type: 'SET_VIEW'; view: AppView }
@@ -19,6 +25,13 @@ type Action =
   | { type: 'SET_CALENDAR_VIEW'; calendarView: CalendarView }
   | { type: 'RESCHEDULE_REMAINING_TASKS' }
   | { type: 'REORDER_TASKS'; fromIndex: number; toIndex: number }
+  | { type: 'ADD_PROJECT'; project: Project }
+  | { type: 'UPDATE_PROJECT'; id: string; updates: Partial<Project> }
+  | { type: 'DELETE_PROJECT'; id: string }
+  | { type: 'ADD_PRIORITY'; priority: Priority }
+  | { type: 'UPDATE_PRIORITY'; id: string; updates: Partial<Priority> }
+  | { type: 'DELETE_PRIORITY'; id: string }
+  | { type: 'ASSIGN_TASK_PROJECT'; taskId: string; projectId: string | null }
   | { type: 'LOAD_STATE'; state: AppState };
 
 const initialState: AppState = {
@@ -29,6 +42,7 @@ const initialState: AppState = {
   isTimerRunning: false,
   timerEndTime: null,
   calendarView: 'day',
+  memory: emptyMemory(),
 };
 
 function reducer(state: AppState, action: Action): AppState {
@@ -195,6 +209,82 @@ function reducer(state: AppState, action: Action): AppState {
       };
     }
 
+    case 'ADD_PROJECT':
+      return {
+        ...state,
+        memory: {
+          ...state.memory,
+          projects: [...state.memory.projects, action.project],
+        },
+      };
+
+    case 'UPDATE_PROJECT':
+      return {
+        ...state,
+        memory: {
+          ...state.memory,
+          projects: state.memory.projects.map(p =>
+            p.id === action.id
+              ? { ...p, ...action.updates, updatedAt: new Date().toISOString() }
+              : p
+          ),
+        },
+      };
+
+    case 'DELETE_PROJECT': {
+      // Drop the project and detach it from any of today's tasks.
+      const tasks = state.dayPlan
+        ? state.dayPlan.tasks.map(t =>
+            t.projectId === action.id ? { ...t, projectId: null } : t
+          )
+        : null;
+      return {
+        ...state,
+        dayPlan: state.dayPlan && tasks ? { ...state.dayPlan, tasks } : state.dayPlan,
+        memory: {
+          ...state.memory,
+          projects: state.memory.projects.filter(p => p.id !== action.id),
+        },
+      };
+    }
+
+    case 'ADD_PRIORITY':
+      return {
+        ...state,
+        memory: {
+          ...state.memory,
+          priorities: [...state.memory.priorities, action.priority],
+        },
+      };
+
+    case 'UPDATE_PRIORITY':
+      return {
+        ...state,
+        memory: {
+          ...state.memory,
+          priorities: state.memory.priorities.map(p =>
+            p.id === action.id ? { ...p, ...action.updates } : p
+          ),
+        },
+      };
+
+    case 'DELETE_PRIORITY':
+      return {
+        ...state,
+        memory: {
+          ...state.memory,
+          priorities: state.memory.priorities.filter(p => p.id !== action.id),
+        },
+      };
+
+    case 'ASSIGN_TASK_PROJECT': {
+      if (!state.dayPlan) return state;
+      const tasks = state.dayPlan.tasks.map(t =>
+        t.id === action.taskId ? { ...t, projectId: action.projectId } : t
+      );
+      return { ...state, dayPlan: { ...state.dayPlan, tasks } };
+    }
+
     case 'LOAD_STATE': {
       // If there was a running timer with an end time, recalculate remaining seconds
       if (action.state.timerEndTime && action.state.isTimerRunning) {
@@ -221,39 +311,62 @@ interface StoreContextType {
   skipTask: () => void;
   closeActiveTask: () => void;
   reorderTasks: (fromIndex: number, toIndex: number) => void;
+  addProject: (name: string, opts?: Partial<Project>) => Project;
+  updateProject: (id: string, updates: Partial<Project>) => void;
+  deleteProject: (id: string) => void;
+  addPriority: (text: string) => Priority;
+  updatePriority: (id: string, updates: Partial<Priority>) => void;
+  deletePriority: (id: string) => void;
+  assignTaskToProject: (taskId: string, projectId: string | null) => void;
 }
 
-const StoreContext = createContext<StoreContextType | null>(null);
+const PROJECT_COLORS = [
+  '#0A84FF', '#30D158', '#FF9F0A', '#BF5AF2', '#FF453A', '#64D2FF',
+];
 
-const STORAGE_KEY = 'todayo_state';
+const StoreContext = createContext<StoreContextType | null>(null);
 
 export function StoreProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(reducer, initialState);
 
-  // Load state from localStorage on mount
+  // Load durable memory + today's plan on mount. Stale days are archived
+  // and unfinished work is carried forward inside loadPersisted().
   useEffect(() => {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved) as AppState;
-        // Only restore if it's today's plan
-        if (parsed.dayPlan?.date === getTodayDate()) {
-          // If timer was running with a valid end time, keep it running
-          if (parsed.isTimerRunning && parsed.timerEndTime && parsed.timerEndTime > Date.now()) {
-            dispatch({ type: 'LOAD_STATE', state: parsed });
-          } else {
-            dispatch({ type: 'LOAD_STATE', state: { ...parsed, isTimerRunning: false, timerEndTime: null } });
-          }
-        }
-      } catch {
-        // Invalid state, ignore
-      }
-    }
+    const data = loadPersisted();
+    if (!data) return;
+
+    const timerStillValid =
+      data.isTimerRunning &&
+      !!data.timerEndTime &&
+      data.timerEndTime > Date.now();
+
+    const restored: AppState = {
+      view: data.view,
+      dayPlan: data.today,
+      activeTaskId: data.activeTaskId,
+      timerSeconds: data.timerSeconds,
+      isTimerRunning: timerStillValid ? data.isTimerRunning : false,
+      timerEndTime: timerStillValid ? data.timerEndTime : null,
+      calendarView: data.calendarView,
+      memory: data.memory,
+    };
+
+    dispatch({ type: 'LOAD_STATE', state: restored });
   }, []);
 
-  // Save state to localStorage on change
+  // Persist everything durable on every change.
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    const data: PersistedData = {
+      memory: state.memory,
+      today: state.dayPlan,
+      view: state.view,
+      activeTaskId: state.activeTaskId,
+      timerSeconds: state.timerSeconds,
+      isTimerRunning: state.isTimerRunning,
+      timerEndTime: state.timerEndTime,
+      calendarView: state.calendarView,
+    };
+    savePersisted(data);
   }, [state]);
 
   // Timer effect - runs every second but uses timestamp for accuracy
@@ -334,6 +447,57 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     dispatch({ type: 'RESCHEDULE_REMAINING_TASKS' });
   }, []);
 
+  const addProject = useCallback((name: string, opts?: Partial<Project>) => {
+    const now = new Date().toISOString();
+    const project: Project = {
+      id: generateId(),
+      name,
+      description: '',
+      color: PROJECT_COLORS[Math.floor(Math.random() * PROJECT_COLORS.length)],
+      priority: 3,
+      status: 'active',
+      createdAt: now,
+      updatedAt: now,
+      ...opts,
+    };
+    dispatch({ type: 'ADD_PROJECT', project });
+    return project;
+  }, []);
+
+  const updateProject = useCallback((id: string, updates: Partial<Project>) => {
+    dispatch({ type: 'UPDATE_PROJECT', id, updates });
+  }, []);
+
+  const deleteProject = useCallback((id: string) => {
+    dispatch({ type: 'DELETE_PROJECT', id });
+  }, []);
+
+  const addPriority = useCallback((text: string) => {
+    const priority: Priority = {
+      id: generateId(),
+      text,
+      rank: Date.now(), // appended to the end; reorder adjusts rank
+      createdAt: new Date().toISOString(),
+    };
+    dispatch({ type: 'ADD_PRIORITY', priority });
+    return priority;
+  }, []);
+
+  const updatePriority = useCallback((id: string, updates: Partial<Priority>) => {
+    dispatch({ type: 'UPDATE_PRIORITY', id, updates });
+  }, []);
+
+  const deletePriority = useCallback((id: string) => {
+    dispatch({ type: 'DELETE_PRIORITY', id });
+  }, []);
+
+  const assignTaskToProject = useCallback(
+    (taskId: string, projectId: string | null) => {
+      dispatch({ type: 'ASSIGN_TASK_PROJECT', taskId, projectId });
+    },
+    []
+  );
+
   return (
     <StoreContext.Provider value={{
       state,
@@ -347,6 +511,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       skipTask,
       closeActiveTask,
       reorderTasks,
+      addProject,
+      updateProject,
+      deleteProject,
+      addPriority,
+      updatePriority,
+      deletePriority,
+      assignTaskToProject,
     }}>
       {children}
     </StoreContext.Provider>
