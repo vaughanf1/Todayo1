@@ -40,7 +40,14 @@ export function getCurrentHour(): number {
 }
 
 export function getTodayDate(): string {
-  return new Date().toISOString().split('T')[0];
+  // LOCAL calendar date (not UTC) — using toISOString() here caused the
+  // day to roll over at UTC midnight, archiving the active plan while it
+  // was still "today" for the user.
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
 }
 
 export function getGreeting(): string {

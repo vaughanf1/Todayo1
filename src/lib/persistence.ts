@@ -61,7 +61,10 @@ export function applyDayRollover(
   todayDate: string = getTodayDate()
 ): PersistedData {
   const plan = data.today;
-  if (!plan || plan.date === todayDate) return data;
+  // Only archive a plan from a strictly EARLIER calendar day. Same-day or
+  // (defensively) future-dated plans are kept as-is, so a clock/timezone
+  // quirk can never wipe the active plan.
+  if (!plan || plan.date >= todayDate) return data;
 
   const completedCount = plan.tasks.filter(t => t.status === 'completed').length;
   const archive: DayArchive = {
@@ -233,7 +236,40 @@ export function loadPersisted(): PersistedData | null {
   if (!data) data = migrateLegacy();
   if (!data) return null;
 
-  return applyDayRollover(data);
+  return applyDayRollover(recoverMisarchivedDay(data));
+}
+
+// Undo a wrongful archive: the old UTC `getTodayDate()` could archive a
+// plan while it was still "today" locally. If the most recent history
+// entry is dated today-or-later and there's no live plan for it, lift it
+// back out of history into `today`.
+function recoverMisarchivedDay(
+  data: PersistedData,
+  todayDate: string = getTodayDate()
+): PersistedData {
+  if (data.today && data.today.date >= todayDate) return data;
+  if (data.memory.history.length === 0) return data;
+
+  const last = data.memory.history[data.memory.history.length - 1];
+  if (last.date < todayDate) return data; // a genuinely past day — leave it
+
+  const restored: DayPlan = {
+    id: last.id,
+    date: last.date,
+    rawInput: last.rawInput,
+    tasks: last.tasks.map(t => ({ ...t })),
+    createdAt: last.archivedAt,
+  };
+
+  return {
+    ...data,
+    today: restored,
+    view: 'timeline',
+    memory: {
+      ...data.memory,
+      history: data.memory.history.slice(0, -1),
+    },
+  };
 }
 
 export function savePersisted(data: PersistedData): void {
