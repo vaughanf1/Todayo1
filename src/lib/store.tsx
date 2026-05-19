@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useReducer, useEffect, useCallback, ReactNode } from 'react';
 import { AppState, AppView, CalendarView, DayPlan, Priority, Project, Task, TaskStatus } from '@/types';
-import { generateId, minutesToTime, parseTimeToMinutes } from './utils';
+import { generateId, minutesToTime } from './utils';
 import {
   PersistedData,
   emptyMemory,
@@ -25,6 +25,7 @@ type Action =
   | { type: 'SET_CALENDAR_VIEW'; calendarView: CalendarView }
   | { type: 'RESCHEDULE_REMAINING_TASKS' }
   | { type: 'REORDER_TASKS'; fromIndex: number; toIndex: number }
+  | { type: 'DEFER_TASK'; taskId: string; reason: string }
   | { type: 'ADD_PROJECT'; project: Project }
   | { type: 'UPDATE_PROJECT'; id: string; updates: Partial<Project> }
   | { type: 'DELETE_PROJECT'; id: string }
@@ -160,26 +161,18 @@ function reducer(state: AppState, action: Action): AppState {
       const currentTimeMinutes = now.getHours() * 60 + now.getMinutes();
       const bufferMinutes = 5;
 
-      // Get remaining tasks (pending or paused) sorted by their current order
-      const remainingTasks = state.dayPlan.tasks
-        .filter(t => t.status === 'pending' || t.status === 'paused')
-        .sort((a, b) => {
-          const aStart = a.scheduledStart ? parseTimeToMinutes(a.scheduledStart) : 0;
-          const bStart = b.scheduledStart ? parseTimeToMinutes(b.scheduledStart) : 0;
-          return aStart - bStart;
-        });
+      // Remaining tasks in their CURRENT MANUAL ORDER (array order, set by
+      // drag-reorder) — not re-sorted by clock time, so a drag sticks.
+      const remainingTasks = state.dayPlan.tasks.filter(
+        t => t.status === 'pending' || t.status === 'paused'
+      );
 
-      // Build a map of new scheduled times
+      // Reflow them back-to-back starting from now, in that order.
       const newSchedules = new Map<string, { start: string; end: string }>();
       let nextStartTime = currentTimeMinutes;
 
       for (const task of remainingTasks) {
-        // Check if task has a fixed time that's still in the future
-        const originalStart = task.scheduledStart ? parseTimeToMinutes(task.scheduledStart) : 0;
-
-        // If the task's original time is in the future and it was a fixed-time task, keep it
-        // Otherwise, reschedule from current time
-        const startTime = Math.max(nextStartTime, originalStart > currentTimeMinutes ? originalStart : nextStartTime);
+        const startTime = nextStartTime;
         const endTime = startTime + task.estimatedMinutes;
 
         newSchedules.set(task.id, {
@@ -207,6 +200,26 @@ function reducer(state: AppState, action: Action): AppState {
         ...state,
         dayPlan: { ...state.dayPlan, tasks: updatedTasks },
       };
+    }
+
+    case 'DEFER_TASK': {
+      if (!state.dayPlan) return state;
+      const idx = state.dayPlan.tasks.findIndex(t => t.id === action.taskId);
+      if (idx === -1) return state;
+
+      // Reset it to pending, attach the reason, and move it to the very
+      // end of the list so the follow-up reschedule drops it last today.
+      const deferred: Task = {
+        ...state.dayPlan.tasks[idx],
+        status: 'pending',
+        deferReason: action.reason,
+        completedAt: null,
+        actualMinutes: null,
+      };
+      const rest = state.dayPlan.tasks.filter(t => t.id !== action.taskId);
+      const tasks = [...rest, deferred].map((t, i) => ({ ...t, sortOrder: i }));
+
+      return { ...state, dayPlan: { ...state.dayPlan, tasks } };
     }
 
     case 'ADD_PROJECT':
@@ -310,6 +323,7 @@ interface StoreContextType {
   completeTask: () => void;
   skipTask: () => void;
   closeActiveTask: () => void;
+  deferTask: (reason: string) => void;
   reorderTasks: (fromIndex: number, toIndex: number) => void;
   addProject: (name: string, opts?: Partial<Project>) => Project;
   updateProject: (id: string, updates: Partial<Project>) => void;
@@ -429,6 +443,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       dispatch({ type: 'UPDATE_TASK_STATUS', taskId: state.activeTaskId, status: 'skipped' });
     }
     dispatch({ type: 'SET_ACTIVE_TASK', taskId: null });
+    // Pull the remaining tasks forward into the freed slot.
+    dispatch({ type: 'RESCHEDULE_REMAINING_TASKS' });
   }, [state.activeTaskId]);
 
   const closeActiveTask = useCallback(() => {
@@ -440,6 +456,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }
     dispatch({ type: 'SET_ACTIVE_TASK', taskId: null });
   }, [state.activeTaskId, state.dayPlan?.tasks]);
+
+  const deferTask = useCallback((reason: string) => {
+    if (!state.activeTaskId) return;
+    dispatch({ type: 'DEFER_TASK', taskId: state.activeTaskId, reason });
+    dispatch({ type: 'RESCHEDULE_REMAINING_TASKS' });
+    dispatch({ type: 'SET_ACTIVE_TASK', taskId: null });
+  }, [state.activeTaskId]);
 
   const reorderTasks = useCallback((fromIndex: number, toIndex: number) => {
     dispatch({ type: 'REORDER_TASKS', fromIndex, toIndex });
@@ -510,6 +533,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       completeTask,
       skipTask,
       closeActiveTask,
+      deferTask,
       reorderTasks,
       addProject,
       updateProject,

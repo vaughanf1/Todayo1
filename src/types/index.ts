@@ -16,6 +16,7 @@ export interface Task {
   completedAt: string | null;
   sortOrder: number;
   projectId?: string | null; // optional link to an ongoing Project
+  deferReason?: string | null; // why it was pushed to later today
 }
 
 export interface DayPlan {

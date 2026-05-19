@@ -32,7 +32,8 @@ export function TaskCard({
   const isActive = task.status === 'active';
   const isPaused = task.status === 'paused';
 
-  const canDrag = !isCompleted && !isSkipped && onDragStart !== undefined && index !== undefined;
+  // Every card is draggable regardless of status — drop reorders the day.
+  const canDrag = onDragStart !== undefined && index !== undefined;
 
   const handleDragStart = (e: React.DragEvent) => {
     if (!canDrag) return;
@@ -133,6 +134,13 @@ export function TaskCard({
               {formatTime(task.estimatedMinutes)}
             </span>
           </div>
+
+          {/* Defer reason */}
+          {task.deferReason && !isCompleted && !isSkipped && (
+            <p className="text-xs text-muted-foreground/80 italic mt-2 truncate">
+              ↩ {task.deferReason}
+            </p>
+          )}
         </div>
 
         {/* Priority dots */}

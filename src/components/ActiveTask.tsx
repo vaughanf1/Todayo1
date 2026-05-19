@@ -1,12 +1,15 @@
 'use client';
 
+import { useState } from 'react';
 import { useStore } from '@/lib/store';
 import { cn, formatTimeFromSeconds, getTaskGroupLabel, getTaskGroupColor, formatTime } from '@/lib/utils';
-import { X, Play, Pause, Check } from 'lucide-react';
+import { X, Play, Pause, Check, CalendarClock } from 'lucide-react';
 
 export function ActiveTask() {
-  const { state, dispatch, pauseTask, completeTask, skipTask, closeActiveTask } = useStore();
+  const { state, dispatch, pauseTask, completeTask, skipTask, closeActiveTask, deferTask } = useStore();
   const { dayPlan, activeTaskId, timerSeconds, isTimerRunning } = state;
+  const [showDefer, setShowDefer] = useState(false);
+  const [reason, setReason] = useState('');
 
   const task = dayPlan?.tasks.find(t => t.id === activeTaskId);
   if (!task) return null;
@@ -135,7 +138,15 @@ export function ActiveTask() {
         </div>
 
         {/* Footer */}
-        <footer className="px-6 py-8 text-center">
+        <footer className="px-6 py-8 flex items-center justify-center gap-6">
+          <button
+            onClick={() => setShowDefer(true)}
+            className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground transition-colors text-sm"
+          >
+            <CalendarClock className="w-4 h-4" />
+            Can&apos;t complete
+          </button>
+          <span className="text-border/40">·</span>
           <button
             onClick={skipTask}
             className="text-muted-foreground hover:text-foreground transition-colors text-sm"
@@ -144,6 +155,56 @@ export function ActiveTask() {
           </button>
         </footer>
       </div>
+
+      {/* Defer sheet */}
+      {showDefer && (
+        <div className="absolute inset-0 z-20 flex items-end sm:items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+            onClick={() => setShowDefer(false)}
+          />
+          <div className="relative w-full max-w-md glass rounded-2xl p-6 animate-scale-in">
+            <h2 className="text-lg font-medium text-foreground">
+              Can&apos;t finish this now?
+            </h2>
+            <p className="text-sm text-muted-foreground mt-1 mb-4">
+              Add a quick reason — it stays on the task and it moves to the
+              end of today&apos;s remaining work.
+            </p>
+            <textarea
+              autoFocus
+              value={reason}
+              onChange={e => setReason(e.target.value)}
+              placeholder="e.g. Blocked — waiting on design feedback"
+              className="w-full h-24 p-3 text-sm rounded-xl bg-card/50 border border-border/40
+                       text-foreground placeholder:text-muted-foreground/60 resize-none
+                       focus:outline-none focus:border-[#0A84FF]/60 transition-colors"
+            />
+            <div className="flex items-center gap-3 mt-4">
+              <button
+                onClick={() => setShowDefer(false)}
+                className="flex-1 py-3 rounded-xl bg-card/60 border border-border/30 text-sm
+                         text-muted-foreground hover:text-foreground transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  deferTask(reason.trim());
+                  setReason('');
+                  setShowDefer(false);
+                }}
+                disabled={!reason.trim()}
+                className="flex-1 py-3 rounded-xl bg-[#0A84FF] text-white text-sm font-medium
+                         hover:opacity-90 active:scale-[0.98] transition-all
+                         disabled:opacity-30 disabled:cursor-not-allowed"
+              >
+                Reschedule for later today
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
