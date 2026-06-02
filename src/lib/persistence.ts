@@ -1,9 +1,11 @@
 // Single source of truth for durable storage.
 //
 // Everything that must survive across days/sessions goes through here.
-// Today this is backed by localStorage; the load/save interface is kept
-// deliberately narrow so it can be swapped for a cloud backend (Supabase)
-// later without touching the store or UI.
+// Two layers sit behind the same PersistedData shape:
+//   - localStorage  — instant, synchronous, offline cache (loadPersisted/savePersisted)
+//   - Postgres      — durable cloud copy via /api/state    (loadRemote/saveRemote)
+// The store reads the local cache immediately for fast paint, then
+// reconciles against the cloud copy ("newest wins" by `savedAt`).
 
 import {
   AiMemory,
@@ -35,6 +37,10 @@ export interface PersistedData {
   isTimerRunning: boolean;
   timerEndTime: number | null;
   calendarView: CalendarView;
+  // ISO timestamp of the last save. Used to reconcile the local cache
+  // against the cloud copy ("newest wins") across devices. Blobs without
+  // it are treated as the oldest possible.
+  savedAt?: string;
 }
 
 export function emptyAiMemory(): AiMemory {
@@ -244,6 +250,13 @@ export function loadPersisted(): PersistedData | null {
   if (!data) data = migrateLegacy();
   if (!data) return null;
 
+  return normalizePersisted(data);
+}
+
+// Apply the day-boundary fixups (un-archive a wrongly-archived day, then
+// roll yesterday into history and carry work forward). Shared by the local
+// and cloud load paths so both behave identically.
+export function normalizePersisted(data: PersistedData): PersistedData {
   return applyDayRollover(recoverMisarchivedDay(data));
 }
 
@@ -286,5 +299,41 @@ export function savePersisted(data: PersistedData): void {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
   } catch {
     // storage full / unavailable — non-fatal
+  }
+}
+
+// ---- Cloud copy (Postgres via /api/state) --------------------------------
+//
+// Both helpers fail soft: a network/DB error leaves the app running on its
+// localStorage cache. loadRemote returns null when the cloud has nothing
+// (or no DB is configured), signalling the caller to seed it from local.
+
+export async function loadRemote(): Promise<PersistedData | null> {
+  if (typeof window === 'undefined') return null;
+  try {
+    const res = await fetch('/api/state', { cache: 'no-store' });
+    if (!res.ok) return null;
+    const body = (await res.json()) as { data: PersistedData | null };
+    if (!body?.data) return null;
+    return normalizePersisted({
+      ...body.data,
+      memory: { ...emptyMemory(), ...body.data.memory },
+    });
+  } catch {
+    return null;
+  }
+}
+
+export async function saveRemote(data: PersistedData): Promise<void> {
+  if (typeof window === 'undefined') return;
+  try {
+    await fetch('/api/state', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+      keepalive: true, // let an in-flight save survive a tab close
+    });
+  } catch {
+    // offline / DB down — the local cache still holds the latest state
   }
 }

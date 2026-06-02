@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useReducer, useEffect, useCallback, ReactNode } from 'react';
+import { createContext, useContext, useReducer, useEffect, useCallback, useRef, ReactNode } from 'react';
 import {
   AppState,
   AppView,
@@ -24,7 +24,9 @@ import {
   PersistedData,
   emptyMemory,
   loadPersisted,
+  loadRemote,
   savePersisted,
+  saveRemote,
 } from './persistence';
 
 type Action =
@@ -558,12 +560,11 @@ const StoreContext = createContext<StoreContextType | null>(null);
 export function StoreProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(reducer, initialState);
 
-  // Load durable memory + today's plan on mount. Stale days are archived
-  // and unfinished work is carried forward inside loadPersisted().
-  useEffect(() => {
-    const data = loadPersisted();
-    if (!data) return;
-
+  // Push a loaded blob into state, then reflow the remaining tasks so the
+  // schedule is always current — the next task starts "now", not whenever
+  // the plan was first made. Skip the reflow only if a timer is actively
+  // running, so we don't disrupt an in-progress task.
+  const hydrate = useCallback((data: PersistedData) => {
     const timerStillValid =
       data.isTimerRunning &&
       !!data.timerEndTime &&
@@ -582,10 +583,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
     dispatch({ type: 'LOAD_STATE', state: restored });
 
-    // On every load/refresh, reflow the remaining tasks so the schedule
-    // is always current — the next task starts "now", not whenever the
-    // plan was first made. Skip it only if a timer is actively running,
-    // so we don't disrupt an in-progress task.
     const hasOpenTasks = restored.dayPlan?.tasks.some(
       t => t.status === 'pending' || t.status === 'paused'
     );
@@ -594,7 +591,43 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  // Persist everything durable on every change.
+  // Gate cloud writes until the initial reconcile finishes, so we never
+  // clobber a newer cloud copy with the local cache during startup.
+  const remoteReady = useRef(false);
+
+  // Load durable memory + today's plan on mount: read the local cache
+  // instantly, then reconcile against the cloud copy. Newest blob (by
+  // `savedAt`) wins; if the cloud has nothing, seed it from local.
+  useEffect(() => {
+    const local = loadPersisted();
+    if (local) hydrate(local);
+
+    let cancelled = false;
+    loadRemote()
+      .then(remote => {
+        if (cancelled) return;
+        const localAt = local?.savedAt ?? '';
+        const remoteAt = remote?.savedAt ?? '';
+        if (remote && remoteAt > localAt) {
+          hydrate(remote); // a newer copy from another device
+        } else if (!remote && local) {
+          saveRemote(local); // cloud is empty — seed it from the cache
+        }
+      })
+      .finally(() => {
+        if (!cancelled) remoteReady.current = true;
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [hydrate]);
+
+  // Persist everything durable on every change: localStorage synchronously
+  // (instant, offline), and the cloud copy debounced (at most ~every 8s
+  // under continuous edits, e.g. a running timer) to spare the database.
+  const remoteSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastRemoteSave = useRef(0);
   useEffect(() => {
     const data: PersistedData = {
       memory: state.memory,
@@ -605,8 +638,18 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       isTimerRunning: state.isTimerRunning,
       timerEndTime: state.timerEndTime,
       calendarView: state.calendarView,
+      savedAt: new Date().toISOString(),
     };
     savePersisted(data);
+
+    if (!remoteReady.current) return;
+    const flush = () => {
+      lastRemoteSave.current = Date.now();
+      saveRemote(data);
+    };
+    if (remoteSaveTimer.current) clearTimeout(remoteSaveTimer.current);
+    if (Date.now() - lastRemoteSave.current > 8000) flush();
+    else remoteSaveTimer.current = setTimeout(flush, 2000);
   }, [state]);
 
   // Timer effect - runs every second but uses timestamp for accuracy

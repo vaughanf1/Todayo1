@@ -5,7 +5,6 @@ import { useStore } from '@/lib/store';
 import { Task } from '@/types';
 import { cn, formatTime, calculateProgress } from '@/lib/utils';
 import { TaskCard } from './TaskCard';
-import { UserMenu } from './UserMenu';
 import { CalendarViewSelector } from './CalendarViewSelector';
 import { WeekView } from './WeekView';
 import { MonthView } from './MonthView';
@@ -169,7 +168,6 @@ export function Timeline({ onNewDay }: TimelineProps) {
               >
                 <Plus className="w-4 h-4 text-muted-foreground" />
               </button>
-              <UserMenu />
             </div>
           </div>
 

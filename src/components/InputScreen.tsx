@@ -4,7 +4,6 @@ import { useState } from 'react';
 import { FileText } from 'lucide-react';
 import { getGreeting } from '@/lib/utils';
 import { useKnowledgeBase } from '@/lib/useKnowledgeBase';
-import { UserMenu } from './UserMenu';
 import { KnowledgeBase } from './KnowledgeBase';
 
 interface InputScreenProps {
@@ -47,7 +46,6 @@ export function InputScreen({ onSubmit, isLoading }: InputScreenProps) {
         >
           <FileText className={`w-4 h-4 ${hasFiles ? 'text-foreground' : 'text-muted-foreground'}`} />
         </button>
-        <UserMenu />
       </header>
 
       {/* Knowledge Base Modal */}
