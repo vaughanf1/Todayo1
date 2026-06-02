@@ -5,7 +5,7 @@ import dynamic from 'next/dynamic';
 import { StoreProvider, useStore } from '@/lib/store';
 import { scheduleTasks } from '@/lib/scheduler';
 import { buildMemoryContext } from '@/lib/persistence';
-import { InputScreen, Timeline, ActiveTask } from '@/components';
+import { InputScreen, Timeline, ActiveTask, ContentStudio, WarmupCalendar } from '@/components';
 import { AIParseResponse } from '@/types';
 
 const DotScreenShader = dynamic(
@@ -93,6 +93,14 @@ function AppContent() {
 
         {state.view === 'active-task' && (
           <ActiveTask />
+        )}
+
+        {state.view === 'warmup' && (
+          <WarmupCalendar onBack={() => setView('timeline')} />
+        )}
+
+        {state.view === 'studio' && (
+          <ContentStudio onBack={() => setView('timeline')} />
         )}
       </div>
     </main>

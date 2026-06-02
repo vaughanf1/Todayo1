@@ -9,6 +9,7 @@ import {
   AiMemory,
   AppMemory,
   AppState,
+  CadenceConfig,
   CalendarView,
   DayArchive,
   DayPlan,
@@ -16,7 +17,7 @@ import {
 } from '@/types';
 import { generateId, getTodayDate } from './utils';
 
-export const MEMORY_VERSION = 1;
+export const MEMORY_VERSION = 2;
 
 const STORAGE_KEY = 'todayo_v2';
 const LEGACY_KEY = 'todayo_state';
@@ -40,6 +41,10 @@ export function emptyAiMemory(): AiMemory {
   return { recurringTasks: [], notes: '', updatedAt: null };
 }
 
+export function emptyCadence(): CadenceConfig {
+  return { youtubePerWeek: 2, reelEveryNDays: 2 };
+}
+
 export function emptyMemory(): AppMemory {
   return {
     version: MEMORY_VERSION,
@@ -47,6 +52,9 @@ export function emptyMemory(): AppMemory {
     priorities: [],
     history: [],
     aiContext: emptyAiMemory(),
+    content: [],
+    schedule: [],
+    cadence: emptyCadence(),
   };
 }
 

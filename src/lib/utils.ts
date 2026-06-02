@@ -50,6 +50,46 @@ export function getTodayDate(): string {
   return `${y}-${m}-${day}`;
 }
 
+// ---- Local-date helpers (YYYY-MM-DD) ----
+// Always parse/format in LOCAL time. `new Date("2026-05-24")` parses as UTC
+// and shifts the day in western timezones — the exact bug getTodayDate() was
+// written to avoid, so every date routine here goes through ymdToDate/ymd.
+
+export function ymd(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+export function ymdToDate(dateStr: string): Date {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  return new Date(y, m - 1, d);
+}
+
+export function addDays(dateStr: string, days: number): string {
+  const d = ymdToDate(dateStr);
+  d.setDate(d.getDate() + days);
+  return ymd(d);
+}
+
+export function dayOfWeek(dateStr: string): number {
+  return ymdToDate(dateStr).getDay(); // 0 = Sun … 6 = Sat
+}
+
+export function daysBetween(from: string, to: string): number {
+  const ms = ymdToDate(to).getTime() - ymdToDate(from).getTime();
+  return Math.round(ms / 86_400_000);
+}
+
+export function formatDateShort(dateStr: string): string {
+  return ymdToDate(dateStr).toLocaleDateString('en-US', {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+  });
+}
+
 export function getGreeting(): string {
   const hour = getCurrentHour();
   if (hour < 12) return 'Good morning';

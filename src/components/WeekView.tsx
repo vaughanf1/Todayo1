@@ -2,13 +2,23 @@
 
 import { useMemo } from 'react';
 import { useStore } from '@/lib/store';
-import { Task } from '@/types';
-import { cn, formatHour } from '@/lib/utils';
-import { TaskCard } from './TaskCard';
+import { ScheduledItem, Task } from '@/types';
+import { cn, formatHour, ymd } from '@/lib/utils';
 
 export function WeekView() {
   const { state, startTask } = useStore();
   const { dayPlan } = state;
+
+  // Forward-dated schedule grouped by local day for the all-day row.
+  const scheduleByDate = useMemo(() => {
+    const map = new Map<string, ScheduledItem[]>();
+    for (const item of state.memory.schedule) {
+      const list = map.get(item.date) ?? [];
+      list.push(item);
+      map.set(item.date, list);
+    }
+    return map;
+  }, [state.memory.schedule]);
 
   const weekDays = useMemo(() => {
     const today = new Date();
@@ -75,6 +85,47 @@ export function WeekView() {
               </div>
             </div>
           ))}
+        </div>
+
+        {/* All-day row: scheduled milestones + content steps */}
+        <div className="grid grid-cols-8 gap-px bg-border/20">
+          <div className="bg-background/50 p-2 text-right flex items-center justify-end">
+            <span className="text-[10px] text-muted-foreground uppercase">All day</span>
+          </div>
+          {weekDays.map((day) => {
+            const items = scheduleByDate.get(ymd(day.date)) ?? [];
+            return (
+              <div
+                key={`allday-${day.dateStr}`}
+                className={cn(
+                  'bg-background/30 min-h-[44px] p-1 space-y-1',
+                  day.isToday && 'bg-foreground/5'
+                )}
+              >
+                {items.slice(0, 3).map((item) => (
+                  <div
+                    key={item.id}
+                    title={item.title}
+                    className={cn(
+                      'text-[10px] leading-tight px-1.5 py-1 rounded-md truncate border',
+                      item.done && 'opacity-50 line-through'
+                    )}
+                    style={{
+                      borderColor: `${item.color ?? '#6B7280'}66`,
+                      backgroundColor: `${item.color ?? '#6B7280'}1A`,
+                    }}
+                  >
+                    {item.title}
+                  </div>
+                ))}
+                {items.length > 3 && (
+                  <div className="text-[10px] text-muted-foreground px-1">
+                    +{items.length - 3} more
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
 
         {/* Time grid */}

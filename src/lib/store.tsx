@@ -1,8 +1,25 @@
 'use client';
 
 import { createContext, useContext, useReducer, useEffect, useCallback, ReactNode } from 'react';
-import { AppState, AppView, CalendarView, DayPlan, Priority, Project, Task, TaskStatus } from '@/types';
-import { generateId, minutesToTime } from './utils';
+import {
+  AppState,
+  AppView,
+  CadenceConfig,
+  CalendarView,
+  ContentPiece,
+  ContentPolish,
+  ContentStage,
+  ContentType,
+  DayPlan,
+  PlannedMilestone,
+  Priority,
+  Project,
+  ScheduledItem,
+  Task,
+  TaskStatus,
+} from '@/types';
+import { addDays, generateId, getTodayDate, minutesToTime } from './utils';
+import { planContentDates, scheduledItemsForPiece } from './cadence';
 import {
   PersistedData,
   emptyMemory,
@@ -22,6 +39,7 @@ type Action =
   | { type: 'PAUSE_TIMER' }
   | { type: 'RESET_TIMER' }
   | { type: 'SYNC_TIMER' }
+  | { type: 'EXTEND_TIMER'; minutes: number }
   | { type: 'SET_CALENDAR_VIEW'; calendarView: CalendarView }
   | { type: 'RESCHEDULE_REMAINING_TASKS' }
   | { type: 'REORDER_TASKS'; fromIndex: number; toIndex: number }
@@ -33,7 +51,21 @@ type Action =
   | { type: 'UPDATE_PRIORITY'; id: string; updates: Partial<Priority> }
   | { type: 'DELETE_PRIORITY'; id: string }
   | { type: 'ASSIGN_TASK_PROJECT'; taskId: string; projectId: string | null }
+  | { type: 'ADD_CONTENT'; piece: ContentPiece }
+  | { type: 'UPDATE_CONTENT'; id: string; updates: Partial<ContentPiece> }
+  | { type: 'DELETE_CONTENT'; id: string }
+  | { type: 'SET_CONTENT_STAGE'; id: string; stage: ContentStage }
+  | { type: 'APPLY_CONTENT_PLAN'; id: string; polish: ContentPolish }
+  | { type: 'SET_PROJECT_MILESTONES'; projectId: string; milestones: PlannedMilestone[] }
+  | { type: 'TOGGLE_SCHEDULED_DONE'; id: string }
+  | { type: 'DELETE_SCHEDULED_ITEM'; id: string }
+  | { type: 'UPDATE_CADENCE'; updates: Partial<CadenceConfig> }
   | { type: 'LOAD_STATE'; state: AppState };
+
+const CONTENT_COLOR: Record<ContentType, string> = {
+  youtube: '#FF453A',
+  reel: '#BF5AF2',
+};
 
 const initialState: AppState = {
   view: 'input',
@@ -130,6 +162,40 @@ function reducer(state: AppState, action: Action): AppState {
         return { ...state, timerSeconds: remaining };
       }
       return state;
+    }
+
+    case 'EXTEND_TIMER': {
+      const addMin = action.minutes;
+      if (addMin <= 0) return state;
+      const addSec = addMin * 60;
+
+      // Bump the task's estimate + scheduledEnd so a later reschedule
+      // reflects the new, longer duration.
+      let dayPlan = state.dayPlan;
+      if (dayPlan && state.activeTaskId) {
+        const tasks = dayPlan.tasks.map(t => {
+          if (t.id !== state.activeTaskId) return t;
+          const newEstimate = t.estimatedMinutes + addMin;
+          let scheduledEnd = t.scheduledEnd;
+          if (t.scheduledStart) {
+            const [h, m] = t.scheduledStart.split(':').map(Number);
+            scheduledEnd = minutesToTime(h * 60 + m + newEstimate);
+          }
+          return { ...t, estimatedMinutes: newEstimate, scheduledEnd };
+        });
+        dayPlan = { ...dayPlan, tasks };
+      }
+
+      // Push the timer forward — from `now` if it had already run out
+      // (overtime), otherwise from its existing end.
+      if (state.isTimerRunning && state.timerEndTime) {
+        const base = Math.max(Date.now(), state.timerEndTime);
+        const newEnd = base + addSec * 1000;
+        const remaining = Math.max(0, Math.ceil((newEnd - Date.now()) / 1000));
+        return { ...state, dayPlan, timerEndTime: newEnd, timerSeconds: remaining };
+      }
+      // Paused / not yet started — just add seconds.
+      return { ...state, dayPlan, timerSeconds: state.timerSeconds + addSec };
     }
 
     case 'SET_CALENDAR_VIEW':
@@ -300,6 +366,143 @@ function reducer(state: AppState, action: Action): AppState {
       return { ...state, dayPlan: { ...state.dayPlan, tasks } };
     }
 
+    case 'ADD_CONTENT':
+      return {
+        ...state,
+        memory: {
+          ...state.memory,
+          content: [...state.memory.content, action.piece],
+        },
+      };
+
+    case 'UPDATE_CONTENT':
+      return {
+        ...state,
+        memory: {
+          ...state.memory,
+          content: state.memory.content.map(p =>
+            p.id === action.id
+              ? { ...p, ...action.updates, updatedAt: new Date().toISOString() }
+              : p
+          ),
+        },
+      };
+
+    case 'DELETE_CONTENT':
+      // Drop the piece and any calendar steps that belong to it.
+      return {
+        ...state,
+        memory: {
+          ...state.memory,
+          content: state.memory.content.filter(p => p.id !== action.id),
+          schedule: state.memory.schedule.filter(s => s.refId !== action.id),
+        },
+      };
+
+    case 'SET_CONTENT_STAGE':
+      return {
+        ...state,
+        memory: {
+          ...state.memory,
+          content: state.memory.content.map(p =>
+            p.id === action.id
+              ? { ...p, stage: action.stage, updatedAt: new Date().toISOString() }
+              : p
+          ),
+        },
+      };
+
+    case 'APPLY_CONTENT_PLAN': {
+      // Fold the AI polish into the piece, then let the cadence engine pick a
+      // publish slot + back-calc the prep dates, and mirror those onto the
+      // forward schedule (replacing any prior steps for this piece).
+      const board = state.memory.content;
+      const piece = board.find(p => p.id === action.id);
+      if (!piece) return state;
+
+      const dates = planContentDates(piece.type, board, state.memory.cadence);
+      const updated: ContentPiece = {
+        ...piece,
+        title: action.polish.title?.trim() || piece.rawTitle,
+        hook: action.polish.hook ?? '',
+        outline: action.polish.outline ?? '',
+        ...dates,
+        updatedAt: new Date().toISOString(),
+      };
+
+      const items = scheduledItemsForPiece(updated, CONTENT_COLOR[piece.type]);
+      return {
+        ...state,
+        memory: {
+          ...state.memory,
+          content: board.map(p => (p.id === piece.id ? updated : p)),
+          schedule: [
+            ...state.memory.schedule.filter(s => s.refId !== piece.id),
+            ...items,
+          ],
+        },
+      };
+    }
+
+    case 'SET_PROJECT_MILESTONES': {
+      // Replace this project's milestones with a fresh 30-day plan.
+      const project = state.memory.projects.find(p => p.id === action.projectId);
+      const today = getTodayDate();
+      const items: ScheduledItem[] = action.milestones.map(m => ({
+        id: generateId(),
+        date: addDays(today, Math.max(0, Math.min(29, m.dayOffset))),
+        title: m.title,
+        kind: 'milestone',
+        refId: action.projectId,
+        refType: 'project',
+        group: m.group,
+        estimatedMinutes: m.estimatedMinutes,
+        done: false,
+        color: project?.color ?? null,
+      }));
+      return {
+        ...state,
+        memory: {
+          ...state.memory,
+          schedule: [
+            ...state.memory.schedule.filter(
+              s => !(s.kind === 'milestone' && s.refId === action.projectId)
+            ),
+            ...items,
+          ],
+        },
+      };
+    }
+
+    case 'TOGGLE_SCHEDULED_DONE':
+      return {
+        ...state,
+        memory: {
+          ...state.memory,
+          schedule: state.memory.schedule.map(s =>
+            s.id === action.id ? { ...s, done: !s.done } : s
+          ),
+        },
+      };
+
+    case 'DELETE_SCHEDULED_ITEM':
+      return {
+        ...state,
+        memory: {
+          ...state.memory,
+          schedule: state.memory.schedule.filter(s => s.id !== action.id),
+        },
+      };
+
+    case 'UPDATE_CADENCE':
+      return {
+        ...state,
+        memory: {
+          ...state.memory,
+          cadence: { ...state.memory.cadence, ...action.updates },
+        },
+      };
+
     case 'LOAD_STATE': {
       // If there was a running timer with an end time, recalculate remaining seconds
       if (action.state.timerEndTime && action.state.isTimerRunning) {
@@ -326,6 +529,7 @@ interface StoreContextType {
   skipTask: () => void;
   closeActiveTask: () => void;
   deferTask: (reason: string) => void;
+  extendTimer: (minutes: number) => void;
   reorderTasks: (fromIndex: number, toIndex: number) => void;
   addProject: (name: string, opts?: Partial<Project>) => Project;
   updateProject: (id: string, updates: Partial<Project>) => void;
@@ -334,6 +538,15 @@ interface StoreContextType {
   updatePriority: (id: string, updates: Partial<Priority>) => void;
   deletePriority: (id: string) => void;
   assignTaskToProject: (taskId: string, projectId: string | null) => void;
+  addContentIdea: (type: ContentType, rawTitle: string) => ContentPiece;
+  applyContentPlan: (id: string, polish: ContentPolish) => void;
+  setContentStage: (id: string, stage: ContentStage) => void;
+  updateContent: (id: string, updates: Partial<ContentPiece>) => void;
+  deleteContent: (id: string) => void;
+  setProjectMilestones: (projectId: string, milestones: PlannedMilestone[]) => void;
+  toggleScheduledDone: (id: string) => void;
+  deleteScheduledItem: (id: string) => void;
+  updateCadence: (updates: Partial<CadenceConfig>) => void;
 }
 
 const PROJECT_COLORS = [
@@ -477,6 +690,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     dispatch({ type: 'SET_ACTIVE_TASK', taskId: null });
   }, [state.activeTaskId]);
 
+  const extendTimer = useCallback((minutes: number) => {
+    dispatch({ type: 'EXTEND_TIMER', minutes });
+  }, []);
+
   const reorderTasks = useCallback((fromIndex: number, toIndex: number) => {
     dispatch({ type: 'REORDER_TASKS', fromIndex, toIndex });
     // Reschedule tasks after reordering
@@ -534,6 +751,63 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     []
   );
 
+  const addContentIdea = useCallback((type: ContentType, rawTitle: string) => {
+    const now = new Date().toISOString();
+    const piece: ContentPiece = {
+      id: generateId(),
+      type,
+      rawTitle,
+      title: rawTitle,
+      hook: '',
+      outline: '',
+      stage: 'idea',
+      scriptDate: null,
+      shootDate: null,
+      editDate: null,
+      publishDate: null,
+      createdAt: now,
+      updatedAt: now,
+      sortOrder: Date.now(),
+    };
+    dispatch({ type: 'ADD_CONTENT', piece });
+    return piece;
+  }, []);
+
+  const applyContentPlan = useCallback((id: string, polish: ContentPolish) => {
+    dispatch({ type: 'APPLY_CONTENT_PLAN', id, polish });
+  }, []);
+
+  const setContentStage = useCallback((id: string, stage: ContentStage) => {
+    dispatch({ type: 'SET_CONTENT_STAGE', id, stage });
+  }, []);
+
+  const updateContent = useCallback((id: string, updates: Partial<ContentPiece>) => {
+    dispatch({ type: 'UPDATE_CONTENT', id, updates });
+  }, []);
+
+  const deleteContent = useCallback((id: string) => {
+    dispatch({ type: 'DELETE_CONTENT', id });
+  }, []);
+
+  const setProjectMilestones = useCallback(
+    (projectId: string, milestones: PlannedMilestone[]) => {
+      dispatch({ type: 'SET_PROJECT_MILESTONES', projectId, milestones });
+    },
+    []
+  );
+
+  const toggleScheduledDone = useCallback((id: string) => {
+    dispatch({ type: 'TOGGLE_SCHEDULED_DONE', id });
+  }, []);
+
+  const deleteScheduledItem = useCallback((id: string) => {
+    dispatch({ type: 'DELETE_SCHEDULED_ITEM', id });
+  }, []);
+
+  const updateCadence = useCallback((updates: Partial<CadenceConfig>) => {
+    dispatch({ type: 'UPDATE_CADENCE', updates });
+  }, []);
+
   return (
     <StoreContext.Provider value={{
       state,
@@ -547,6 +821,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       skipTask,
       closeActiveTask,
       deferTask,
+      extendTimer,
       reorderTasks,
       addProject,
       updateProject,
@@ -555,6 +830,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       updatePriority,
       deletePriority,
       assignTaskToProject,
+      addContentIdea,
+      applyContentPlan,
+      setContentStage,
+      updateContent,
+      deleteContent,
+      setProjectMilestones,
+      toggleScheduledDone,
+      deleteScheduledItem,
+      updateCadence,
     }}>
       {children}
     </StoreContext.Provider>

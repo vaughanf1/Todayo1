@@ -2,11 +2,24 @@
 
 import { useMemo } from 'react';
 import { useStore } from '@/lib/store';
-import { cn } from '@/lib/utils';
+import { ScheduledItem } from '@/types';
+import { cn, ymd } from '@/lib/utils';
 
 export function MonthView() {
   const { state, startTask } = useStore();
   const { dayPlan } = state;
+
+  // Forward-dated schedule grouped by day, so every day — not just today —
+  // shows its planned milestones and content steps.
+  const scheduleByDate = useMemo(() => {
+    const map = new Map<string, ScheduledItem[]>();
+    for (const item of state.memory.schedule) {
+      const list = map.get(item.date) ?? [];
+      list.push(item);
+      map.set(item.date, list);
+    }
+    return map;
+  }, [state.memory.schedule]);
 
   const calendar = useMemo(() => {
     const today = new Date();
@@ -121,7 +134,7 @@ export function MonthView() {
 
                         {/* Show task indicators for today */}
                         {day.isToday && hasTodayPlan && (
-                          <div className="flex flex-wrap gap-1 mt-2">
+                          <div className="flex flex-wrap gap-1 mt-1">
                             {completedCount > 0 && (
                               <div className="flex items-center gap-1 text-xs text-muted-foreground">
                                 <div className="w-2 h-2 rounded-full bg-green-500/70" />
@@ -136,6 +149,32 @@ export function MonthView() {
                             )}
                           </div>
                         )}
+
+                        {/* Scheduled milestones + content steps for any day */}
+                        {(() => {
+                          const items = day.date ? scheduleByDate.get(ymd(day.date)) ?? [] : [];
+                          if (items.length === 0) return null;
+                          return (
+                            <div className="flex flex-wrap items-center gap-1 mt-1">
+                              {items.slice(0, 4).map(item => (
+                                <span
+                                  key={item.id}
+                                  title={item.title}
+                                  className={cn(
+                                    'w-2 h-2 rounded-full',
+                                    item.done && 'opacity-40'
+                                  )}
+                                  style={{ backgroundColor: item.color ?? '#6B7280' }}
+                                />
+                              ))}
+                              {items.length > 4 && (
+                                <span className="text-[10px] text-muted-foreground">
+                                  +{items.length - 4}
+                                </span>
+                              )}
+                            </div>
+                          );
+                        })()}
                       </>
                     )}
                   </div>

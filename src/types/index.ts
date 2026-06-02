@@ -59,6 +59,8 @@ export interface Project {
   status: ProjectStatus;
   createdAt: string;
   updatedAt: string;
+  objective?: string; // what "done" looks like — drives the warm-up planner
+  targetDate?: string | null; // YYYY-MM-DD deadline the 30-day plan works back from
 }
 
 // A standing priority / goal that outlives any single day.
@@ -95,19 +97,110 @@ export interface AiMemory {
   updatedAt: string | null;
 }
 
+// ---- Content Studio: YouTube + Instagram Reels pipeline ----
+
+export type ContentType = 'youtube' | 'reel';
+
+// Board columns. `published` is the terminal state; the rest are work stages.
+export type ContentStage = 'idea' | 'scripting' | 'filming' | 'editing' | 'published';
+
+export const CONTENT_STAGES: ContentStage[] = [
+  'idea',
+  'scripting',
+  'filming',
+  'editing',
+  'published',
+];
+
+export const CONTENT_STAGE_LABEL: Record<ContentStage, string> = {
+  idea: 'Ideas',
+  scripting: 'Scripting',
+  filming: 'Filming',
+  editing: 'Editing',
+  published: 'Published',
+};
+
+// One video/reel as it moves across the board. Raw title is what the user
+// dropped in; the rest is AI-polished. Stage dates are computed by the
+// cadence engine and mirrored onto the forward schedule as ScheduledItems.
+export interface ContentPiece {
+  id: string;
+  type: ContentType;
+  rawTitle: string;
+  title: string; // polished
+  hook: string; // opening angle / thumbnail concept
+  outline: string; // beat-by-beat script outline
+  stage: ContentStage;
+  scriptDate: string | null; // YYYY-MM-DD
+  shootDate: string | null;
+  editDate: string | null;
+  publishDate: string | null;
+  createdAt: string;
+  updatedAt: string;
+  sortOrder: number;
+}
+
+// ---- Forward-dated schedule: the calendar's real backbone ----
+// Until now Week/Month only rendered "today". ScheduledItems are dated
+// work that lives on any future day — milestones from the warm-up planner
+// and the per-stage steps generated for each content piece.
+
+export type ScheduledItemKind = 'milestone' | 'content-step';
+
+export interface ScheduledItem {
+  id: string;
+  date: string; // YYYY-MM-DD
+  title: string;
+  kind: ScheduledItemKind;
+  refId: string | null; // ContentPiece.id or Project.id this belongs to
+  refType: 'content' | 'project' | null;
+  group: TaskGroup;
+  estimatedMinutes: number;
+  done: boolean;
+  color: string | null; // inherits its project/content colour for the calendar
+}
+
+// Standing publishing cadence the scheduler works to.
+export interface CadenceConfig {
+  youtubePerWeek: number; // target videos per week
+  reelEveryNDays: number; // a reel at least this often
+}
+
 export interface AppMemory {
   version: number;
   projects: Project[];
   priorities: Priority[];
   history: DayArchive[];
   aiContext: AiMemory;
+  content: ContentPiece[]; // Studio board
+  schedule: ScheduledItem[]; // forward-dated calendar
+  cadence: CadenceConfig; // publishing targets
 }
 
 // Calendar view type
 export type CalendarView = 'day' | 'week' | 'month';
 
 // App state
-export type AppView = 'input' | 'timeline' | 'active-task';
+export type AppView = 'input' | 'timeline' | 'active-task' | 'warmup' | 'studio';
+
+// Response from the content-polish AI route.
+export interface ContentPolish {
+  title: string;
+  hook: string;
+  outline: string;
+}
+
+// One milestone from the warm-up planner, positioned relative to today.
+export interface PlannedMilestone {
+  title: string;
+  dayOffset: number; // 0 = today, 29 = day 30
+  estimatedMinutes: number;
+  group: TaskGroup;
+}
+
+export interface WarmupPlanResponse {
+  milestones: PlannedMilestone[];
+}
 
 export interface AppState {
   view: AppView;

@@ -9,3 +9,5 @@ export { HistoryPanel } from './HistoryPanel';
 export { CalendarViewSelector } from './CalendarViewSelector';
 export { WeekView } from './WeekView';
 export { MonthView } from './MonthView';
+export { ContentStudio } from './ContentStudio';
+export { WarmupCalendar } from './WarmupCalendar';

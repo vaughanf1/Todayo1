@@ -11,7 +11,7 @@ import { WeekView } from './WeekView';
 import { MonthView } from './MonthView';
 import { ProjectsPanel } from './ProjectsPanel';
 import { HistoryPanel } from './HistoryPanel';
-import { Plus, FolderKanban, History } from 'lucide-react';
+import { Plus, FolderKanban, History, CalendarRange, Clapperboard } from 'lucide-react';
 
 // Minutes-from-midnight (a :00 or :30 slot) -> "9:30 AM"
 function formatSlot(minutes: number): string {
@@ -27,7 +27,7 @@ interface TimelineProps {
 }
 
 export function Timeline({ onNewDay }: TimelineProps) {
-  const { state, startTask, setCalendarView, reorderTasks } = useStore();
+  const { state, startTask, setCalendarView, reorderTasks, setView } = useStore();
   const { dayPlan, calendarView } = state;
 
   // Use refs for drag indices (synchronous access)
@@ -129,6 +129,22 @@ export function Timeline({ onNewDay }: TimelineProps) {
                 value={calendarView}
                 onChange={setCalendarView}
               />
+              <button
+                onClick={() => setView('warmup')}
+                className="w-9 h-9 rounded-full bg-card/60 border border-border/30 flex items-center justify-center
+                         hover:bg-card transition-colors"
+                title="Warm-up calendar"
+              >
+                <CalendarRange className="w-4 h-4 text-muted-foreground" />
+              </button>
+              <button
+                onClick={() => setView('studio')}
+                className="w-9 h-9 rounded-full bg-card/60 border border-border/30 flex items-center justify-center
+                         hover:bg-card transition-colors"
+                title="Content studio"
+              >
+                <Clapperboard className="w-4 h-4 text-muted-foreground" />
+              </button>
               <button
                 onClick={() => setShowHistory(true)}
                 className="w-9 h-9 rounded-full bg-card/60 border border-border/30 flex items-center justify-center

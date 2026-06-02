@@ -6,7 +6,7 @@ import { cn, formatTimeFromSeconds, getTaskGroupLabel, getTaskGroupColor, format
 import { X, Play, Pause, Check, CalendarClock } from 'lucide-react';
 
 export function ActiveTask() {
-  const { state, dispatch, pauseTask, completeTask, skipTask, closeActiveTask, deferTask } = useStore();
+  const { state, dispatch, pauseTask, completeTask, skipTask, closeActiveTask, deferTask, extendTimer } = useStore();
   const { dayPlan, activeTaskId, timerSeconds, isTimerRunning } = state;
   const [showDefer, setShowDefer] = useState(false);
   const [reason, setReason] = useState('');
@@ -104,6 +104,25 @@ export function ActiveTask() {
                 {isOvertime ? 'overtime' : 'remaining'}
               </span>
             </div>
+          </div>
+
+          {/* Extend timer */}
+          <div className="flex items-center gap-2 mb-8">
+            <span className="text-xs text-muted-foreground mr-1">Need more time?</span>
+            <button
+              onClick={() => extendTimer(5)}
+              className="px-3 py-1.5 rounded-full bg-card/60 border border-border/30 text-xs font-medium
+                       text-foreground hover:bg-card active:scale-95 transition-all tabular-nums"
+            >
+              +5m
+            </button>
+            <button
+              onClick={() => extendTimer(15)}
+              className="px-3 py-1.5 rounded-full bg-card/60 border border-border/30 text-xs font-medium
+                       text-foreground hover:bg-card active:scale-95 transition-all tabular-nums"
+            >
+              +15m
+            </button>
           </div>
 
           {/* Controls */}
